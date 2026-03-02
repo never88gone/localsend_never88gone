@@ -109,13 +109,7 @@ class ClientInfo {
   });
 
   @override
-  int get hashCode =>
-      id.hashCode ^
-      alias.hashCode ^
-      version.hashCode ^
-      deviceModel.hashCode ^
-      deviceType.hashCode ^
-      token.hashCode;
+  int get hashCode => id.hashCode ^ alias.hashCode ^ version.hashCode ^ deviceModel.hashCode ^ deviceType.hashCode ^ token.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -146,12 +140,7 @@ class ClientInfoWithoutId {
   });
 
   @override
-  int get hashCode =>
-      alias.hashCode ^
-      version.hashCode ^
-      deviceModel.hashCode ^
-      deviceType.hashCode ^
-      token.hashCode;
+  int get hashCode => alias.hashCode ^ version.hashCode ^ deviceModel.hashCode ^ deviceType.hashCode ^ token.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -181,11 +170,7 @@ class ExpectingPublicKey {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is ExpectingPublicKey &&
-          runtimeType == other.runtimeType &&
-          publicKey == other.publicKey &&
-          kind == other.kind;
+      identical(this, other) || other is ExpectingPublicKey && runtimeType == other.runtimeType && publicKey == other.publicKey && kind == other.kind;
 }
 
 class PinConfig {
@@ -202,11 +187,7 @@ class PinConfig {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is PinConfig &&
-          runtimeType == other.runtimeType &&
-          pin == other.pin &&
-          maxTries == other.maxTries;
+      identical(this, other) || other is PinConfig && runtimeType == other.runtimeType && pin == other.pin && maxTries == other.maxTries;
 }
 
 class ProposingClientInfo {
@@ -223,11 +204,7 @@ class ProposingClientInfo {
   });
 
   @override
-  int get hashCode =>
-      alias.hashCode ^
-      version.hashCode ^
-      deviceModel.hashCode ^
-      deviceType.hashCode;
+  int get hashCode => alias.hashCode ^ version.hashCode ^ deviceModel.hashCode ^ deviceType.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -254,11 +231,7 @@ class RTCFileError {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is RTCFileError &&
-          runtimeType == other.runtimeType &&
-          fileId == other.fileId &&
-          error == other.error;
+      identical(this, other) || other is RTCFileError && runtimeType == other.runtimeType && fileId == other.fileId && error == other.error;
 }
 
 class RTCSendFileResponse {
@@ -278,11 +251,7 @@ class RTCSendFileResponse {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is RTCSendFileResponse &&
-          runtimeType == other.runtimeType &&
-          id == other.id &&
-          success == other.success &&
-          error == other.error;
+      other is RTCSendFileResponse && runtimeType == other.runtimeType && id == other.id && success == other.success && error == other.error;
 }
 
 @freezed
@@ -346,9 +315,5 @@ class WsServerSdpMessage {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is WsServerSdpMessage &&
-          runtimeType == other.runtimeType &&
-          peer == other.peer &&
-          sessionId == other.sessionId &&
-          sdp == other.sdp;
+      other is WsServerSdpMessage && runtimeType == other.runtimeType && peer == other.peer && sessionId == other.sessionId && sdp == other.sdp;
 }
