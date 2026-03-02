@@ -327,8 +327,11 @@ class _TranslationsReceivePageEnIn extends TranslationsReceivePageEn {
 
   // Translations
   @override
-  String subTitle({required num n}) =>
-      (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(n, one: 'wants to send you a file', other: 'wants to send you ${n} files');
+  String subTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: 'wants to send you a file',
+    other: 'wants to send you ${n} files',
+  );
   @override
   String get subTitleMessage => 'sent you a message:';
   @override
@@ -388,6 +391,8 @@ class _TranslationsProgressPageEnIn extends TranslationsProgressPageEn {
   String get savedToGallery => 'Saved in Photos';
   @override
   late final _TranslationsProgressPageTotalEnIn total = _TranslationsProgressPageTotalEnIn._(_root);
+  @override
+  late final _TranslationsProgressPageRemainingTimeEnIn remainingTime = _TranslationsProgressPageRemainingTimeEnIn._(_root);
 }
 
 // Path: webSharePage
@@ -1061,6 +1066,27 @@ class _TranslationsProgressPageTotalEnIn extends TranslationsProgressPageTotalEn
   String size({required Object curr, required Object n}) => 'Size: ${curr} / ${n}';
   @override
   String speed({required Object speed}) => 'Speed: ${speed}/s';
+}
+
+// Path: progressPage.remainingTime
+class _TranslationsProgressPageRemainingTimeEnIn extends TranslationsProgressPageRemainingTimeEn {
+  _TranslationsProgressPageRemainingTimeEnIn._(TranslationsEnIn root) : this._root = root, super.internal(root);
+
+  final TranslationsEnIn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String seconds({required Object n, required Object ss}) => '${n}:${ss}';
+  @override
+  String minutes({required Object n, required Object ss}) => '${n}:${ss}';
+
+  /// Use 'h' for hours abbreviation and 'm' for minutes
+  @override
+  String hours({required Object h, required Object m}) => '${h}h ${m}m';
+
+  /// Use 'd' for days, 'h' for hours, and 'm' for minutes
+  @override
+  String days({required Object d, required Object h, required Object m}) => '${d}d ${h}h ${m}m';
 }
 
 // Path: dialogs.addFile

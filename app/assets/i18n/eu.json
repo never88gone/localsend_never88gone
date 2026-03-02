@@ -119,7 +119,6 @@
       "saveToGallery": "Gorde galerian",
       "saveToHistory": "Gorde historialean",
       "quickSaveFromFavorites": "@:general.quickSaveFromFavorites",
-      "requirePin": "@:webSharePage.requirePin",
       "autoFinish": "Automatikoki amaitu"
     },
     "network": {

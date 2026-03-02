@@ -85,6 +85,8 @@ class TranslationsJa extends Translations {
   late final _TranslationsWebJa web = _TranslationsWebJa._(_root);
   @override
   late final _TranslationsAssetPickerJa assetPicker = _TranslationsAssetPickerJa._(_root);
+  @override
+  late final _TranslationsNetworkInterfacesPageJa networkInterfacesPage = _TranslationsNetworkInterfacesPageJa._(_root);
 }
 
 // Path: general
@@ -323,8 +325,11 @@ class _TranslationsReceivePageJa extends TranslationsReceivePageEn {
 
   // Translations
   @override
-  String subTitle({required num n}) =>
-      (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('ja'))(n, one: 'がファイルを送信しようとしています。', other: 'が ${n} 件のファイルを送信しようとしています。');
+  String subTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('ja'))(
+    n,
+    one: 'がファイルを送信しようとしています。',
+    other: 'が ${n} 件のファイルを送信しようとしています。',
+  );
   @override
   String get subTitleMessage => 'がメッセージを送信しました:';
   @override
@@ -402,8 +407,11 @@ class _TranslationsWebSharePageJa extends TranslationsWebSharePageEn {
   @override
   String get error => 'サーバーの起動中にエラーが発生しました。';
   @override
-  String openLink({required num n}) =>
-      (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('ja'))(n, one: 'このリンクをブラウザーで開いてください:', other: 'これらのリンクのいずれかをブラウザーで開いてください:');
+  String openLink({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('ja'))(
+    n,
+    one: 'このリンクをブラウザーで開いてください:',
+    other: 'これらのリンクのいずれかをブラウザーで開いてください:',
+  );
   @override
   String get requests => 'リクエスト';
   @override
@@ -655,6 +663,25 @@ class _TranslationsAssetPickerJa extends TranslationsAssetPickerEn {
   String get sUnitAssetCountLabel => '個数';
 }
 
+// Path: networkInterfacesPage
+class _TranslationsNetworkInterfacesPageJa extends TranslationsNetworkInterfacesPageEn {
+  _TranslationsNetworkInterfacesPageJa._(TranslationsJa root) : this._root = root, super.internal(root);
+
+  final TranslationsJa _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get preview => 'プレビュー';
+  @override
+  String get blacklist => 'ブラックリスト';
+  @override
+  String get whitelist => 'ホワイトリスト';
+  @override
+  String get title => 'ネットワークインターフェース';
+  @override
+  String get info => 'デフォルトでは、LocalSend は利用可能なすべてのネットワークインターフェースを使用します。不要なネットワークを除外するには、ここで設定できます。変更を適用するには、サーバーを再起動する必要があります。';
+}
+
 // Path: receiveTab.infoBox
 class _TranslationsReceiveTabInfoBoxJa extends TranslationsReceiveTabInfoBoxEn {
   _TranslationsReceiveTabInfoBoxJa._(TranslationsJa root) : this._root = root, super.internal(root);
@@ -848,6 +875,10 @@ class _TranslationsSettingsTabNetworkJa extends TranslationsSettingsTabNetworkEn
   String get multicastGroup => 'マルチキャスト';
   @override
   String multicastGroupWarning({required Object defaultMulticast}) => 'マルチキャストアドレスが変更されているため、他のデバイスから検出されなくなる場合があります。(デフォルト: ${defaultMulticast})';
+  @override
+  String get network => 'ネットワーク';
+  @override
+  late final _TranslationsSettingsTabNetworkNetworkOptionsJa networkOptions = _TranslationsSettingsTabNetworkNetworkOptionsJa._(_root);
 }
 
 // Path: settingsTab.other
@@ -1340,6 +1371,19 @@ class _TranslationsSettingsTabGeneralLanguageOptionsJa extends TranslationsSetti
   // Translations
   @override
   String get system => 'システム';
+}
+
+// Path: settingsTab.network.networkOptions
+class _TranslationsSettingsTabNetworkNetworkOptionsJa extends TranslationsSettingsTabNetworkNetworkOptionsEn {
+  _TranslationsSettingsTabNetworkNetworkOptionsJa._(TranslationsJa root) : this._root = root, super.internal(root);
+
+  final TranslationsJa _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get all => 'すべて';
+  @override
+  String get filtered => 'フィルター';
 }
 
 // Path: progressPage.total.title

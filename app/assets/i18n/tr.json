@@ -49,9 +49,9 @@
       "alias": "Takma isminiz:"
     },
     "quickSave": {
-      "off": "@:genel.kapalı",
+      "off": "@:general.off",
       "favorites": "Favoriler",
-      "on": "@:genel.açık"
+      "on": "@:general.on"
     }
   },
   "sendTab": {
@@ -120,7 +120,7 @@
       "downloads": "(İndirilenler)",
       "saveToGallery": "Medyayı galeriye kaydet",
       "saveToHistory": "Geçmişe kaydet",
-      "quickSaveFromFavorites": "@:genel.FavorilerdenHızlıKaydet"
+      "quickSaveFromFavorites": "@:general.quickSaveFromFavorites"
     },
     "send": {
       "title": "Gönder",
@@ -396,12 +396,12 @@
       "content": "Alınan dosyayı açmak istiyor musunuz?"
     },
     "quickSaveFromFavoritesNotice": {
+      "title": "@:general.quickSaveFromFavorites",
       "content": [
         "Favoriler listenizdeki cihazların paylaşım istekleri otomatik olarak kabul edilecektir.",
         "Uyarı! Şu an, bu tamamen güvenli değildir çünkü favoriler listenizdeki herhangi bir cihazın parmak izine sahip olan hackerlar sınırlama olmadan size dosyalar gönderebilir.",
         "Ancak, bu seçenek yinede ağdaki tüm kullanıcıların size sınırlandırma olmadan dosya göndermesine izin vermekten daha güvenlidir."
-      ],
-      "title": "@:genel.FavorilerdenHızlıKaydet"
+      ]
     }
   },
   "sanitization": {

@@ -145,7 +145,7 @@ class _TranslationsGeneralEt extends TranslationsGeneralEn {
   @override
   String get open => 'Ava';
   @override
-  String get queue => 'Järjekord';
+  String get queue => 'Järjekorras';
   @override
   String get quickSave => 'Kiirsalvestus';
   @override
@@ -325,8 +325,11 @@ class _TranslationsReceivePageEt extends TranslationsReceivePageEn {
 
   // Translations
   @override
-  String subTitle({required num n}) =>
-      (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('et'))(n, one: 'soovib sulle saata faili', other: 'soovib sulle saata ${n} faili');
+  String subTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('et'))(
+    n,
+    one: 'soovib sulle saata faili',
+    other: 'soovib sulle saata ${n} faili',
+  );
   @override
   String get subTitleMessage => 'saatis sulle sõnumi:';
   @override
@@ -386,6 +389,8 @@ class _TranslationsProgressPageEt extends TranslationsProgressPageEn {
   String get savedToGallery => 'Salvestatud kausta Fotod';
   @override
   late final _TranslationsProgressPageTotalEt total = _TranslationsProgressPageTotalEt._(_root);
+  @override
+  late final _TranslationsProgressPageRemainingTimeEt remainingTime = _TranslationsProgressPageRemainingTimeEt._(_root);
 }
 
 // Path: webSharePage
@@ -897,7 +902,7 @@ class _TranslationsSettingsTabOtherEt extends TranslationsSettingsTabOtherEn {
   @override
   String get donate => 'Toeta rahaliselt';
   @override
-  String get privacyPolicy => 'Privaatsuspoliitika';
+  String get privacyPolicy => 'Andmekaitsepõhimõtted';
   @override
   String get termsOfUse => 'Kasutustingimused';
 }
@@ -978,6 +983,27 @@ class _TranslationsProgressPageTotalEt extends TranslationsProgressPageTotalEn {
   String size({required Object curr, required Object n}) => 'Andmemaht: ${curr} / ${n}';
   @override
   String speed({required Object speed}) => 'Kiirus: ${speed}/s';
+}
+
+// Path: progressPage.remainingTime
+class _TranslationsProgressPageRemainingTimeEt extends TranslationsProgressPageRemainingTimeEn {
+  _TranslationsProgressPageRemainingTimeEt._(TranslationsEt root) : this._root = root, super.internal(root);
+
+  final TranslationsEt _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String seconds({required Object n, required Object ss}) => '${n}:${ss}';
+  @override
+  String minutes({required Object n, required Object ss}) => '${n}:${ss}';
+
+  /// Kasuta „h“ tunni lühendina ja „m“ minutite jaoks
+  @override
+  String hours({required Object h, required Object m}) => '${h} t ${m} min';
+
+  /// Kasuta „d“ päeva, lühendina „h“ tunni lühendina ja „m“ minutite jaoks
+  @override
+  String days({required Object d, required Object h, required Object m}) => '${d} pv ${h} t ${m} min';
 }
 
 // Path: dialogs.addFile

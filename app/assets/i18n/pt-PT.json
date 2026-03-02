@@ -216,7 +216,7 @@
     "waiting": "A aguardar resposta…",
     "rejected": "O destinatário rejeitou o pedido.",
     "busy": "O destinatário está ocupado com outro pedido de transferência.",
-    "tooManyAttempts": "@:web.muitastentativas"
+    "tooManyAttempts": "@:web.tooManyAttempts"
   },
   "progressPage": {
     "titleSending": "A enviar ficheiros",

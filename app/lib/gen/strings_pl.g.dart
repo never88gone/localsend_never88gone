@@ -325,8 +325,11 @@ class _TranslationsReceivePagePl extends TranslationsReceivePageEn {
 
   // Translations
   @override
-  String subTitle({required num n}) =>
-      (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('pl'))(n, one: 'chce wysłać Ci plik', other: 'chce wysłać Ci ${n} plików');
+  String subTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('pl'))(
+    n,
+    one: 'chce wysłać Ci plik',
+    other: 'chce wysłać Ci ${n} plików',
+  );
   @override
   String get subTitleMessage => 'wysłał Ci wiadomość:';
   @override
@@ -386,6 +389,8 @@ class _TranslationsProgressPagePl extends TranslationsProgressPageEn {
   String get savedToGallery => 'Zapisane w galerii';
   @override
   late final _TranslationsProgressPageTotalPl total = _TranslationsProgressPageTotalPl._(_root);
+  @override
+  late final _TranslationsProgressPageRemainingTimePl remainingTime = _TranslationsProgressPageRemainingTimePl._(_root);
 }
 
 // Path: webSharePage
@@ -978,6 +983,27 @@ class _TranslationsProgressPageTotalPl extends TranslationsProgressPageTotalEn {
   String size({required Object curr, required Object n}) => 'Wielkość: ${curr} / ${n}';
   @override
   String speed({required Object speed}) => 'Prędkość: ${speed}/s';
+}
+
+// Path: progressPage.remainingTime
+class _TranslationsProgressPageRemainingTimePl extends TranslationsProgressPageRemainingTimeEn {
+  _TranslationsProgressPageRemainingTimePl._(TranslationsPl root) : this._root = root, super.internal(root);
+
+  final TranslationsPl _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String seconds({required Object n, required Object ss}) => '${n}:${ss}';
+  @override
+  String minutes({required Object n, required Object ss}) => '${n}:${ss}';
+
+  /// Użyj „h” w przypadku skrótu godzin i „m” w przypadku minut
+  @override
+  String hours({required Object h, required Object m}) => '${h}h ${m}m';
+
+  /// Uży „d” w przypadku dni, „h” w przypadku godzin i „m” w przypadku minut
+  @override
+  String days({required Object d, required Object h, required Object m}) => '${d}d ${h}h ${m}m';
 }
 
 // Path: dialogs.addFile
