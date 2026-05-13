@@ -1,0 +1,18 @@
+[parse]
+parse_deps = false
+include = []
+
+[export]
+include = ["localsend_start_server", "localsend_stop_server", "localsend_scan_devices", "localsend_get_network_info", "localsend_send_request", "localsend_free_string", "localsend_is_server_running", "localsend_send_announcement", "localsend_get_device_count", "localsend_get_registered_devices", "localsend_get_pending_requests", "localsend_set_alias", "localsend_get_fingerprint"]
+
+[fn]
+sort_by = "Name"
+
+[struct]
+rename_fields = "None"
+
+[enum]
+rename_variants = "None"
+
+[macro_expansion]
+bitflags = true

@@ -1,0 +1,28 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "糖葫芦投送 - 跨设备文件传输工具"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "糖葫芦投送主界面"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "糖葫芦投送"
+    },
+    {
+      "name": "permission_read_media_reason",
+      "value": "需要读取媒体文件以发送给其他设备"
+    },
+    {
+      "name": "permission_write_media_reason",
+      "value": "需要保存接收的文件到本地"
+    },
+    {
+      "name": "permission_file_access_reason",
+      "value": "需要访问文件以进行跨设备传输"
+    }
+  ]
+}

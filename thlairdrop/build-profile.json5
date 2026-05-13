@@ -1,0 +1,56 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "/Users/never88gone/.ohos/config/default_thlairdrop_kapSKHfuyHvqMC7h5ZgGxiq1L6P1-YyTdPL_rI19kzw=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001A17326D08E3CEB1CE0E97C0F5D42883EBD46551C0F9D62BE951AE3E3927C48057D87920EB8E5C",
+          "profile": "/Users/never88gone/.ohos/config/default_thlairdrop_kapSKHfuyHvqMC7h5ZgGxiq1L6P1-YyTdPL_rI19kzw=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "/Users/never88gone/.ohos/config/default_thlairdrop_kapSKHfuyHvqMC7h5ZgGxiq1L6P1-YyTdPL_rI19kzw=.p12",
+          "storePassword": "0000001A6D17660CC6655CB30AB895B7B05260DFC2FBB5D6C00179FEC01931D12438690298C99942D6CD"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "targetSdkVersion": "6.1.0(23)",
+        "compatibleSdkVersion": "6.1.0(23)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug"
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}
