@@ -1,7 +1,11 @@
 import promptAction from '@ohos.promptAction';
+import router from '@ohos.router';
 import { fileTransferManager, TransferTask, TransferState, TransferDirection } from '../service/FileTransferManager';
 import { localSendService, Device, FileInfo, DeviceType } from '../service/LocalSendService';
-import { TransferProgressCard, TransferList } from './TransferProgressCard';
+import { TransferProgressCard } from './TransferProgressCard';
+import { SettingsService } from '../services/SettingsService';
+import { gc } from '../utils/ThemeManager';
+import { t } from '../utils/I18nManager';
 
 // 文件请求信息
 interface FileRequestInfo {
@@ -33,14 +37,20 @@ interface FileItemJson {
 
 @Component
 export struct ReceiveTab {
+  @StorageProp('appTheme') currentTheme: string = 'system';
+  @StorageProp('appLanguage') currentLanguage: string = 'system';
   @Link aliasName: string;
   @Link isServerRunning: boolean;
   @Link localIps: string[];
   @Link quickSaveMode: number;
   @Link showAdvancedInfo: boolean;
   @Link animationAngle: number;
+  @Link saveDir: string;
+  @Link port: number;
   @State receiveTasks: TransferTask[] = [];
   @State pendingRequests: Map<string, FileRequestInfo> = new Map();
+  
+  private settingsService: SettingsService = SettingsService.getInstance();
 
   aboutToAppear() {
     // 注册文件请求回调
@@ -94,12 +104,17 @@ export struct ReceiveTab {
     if (!request) return;
 
     // 创建接收任务
-    const saveDir = '/data/storage/el2/base/files/localsend';
+    let actualDir = '/data/storage/el2/base/files/Download';
+    if (this.saveDir === '文档' || this.saveDir === 'Documents') {
+      actualDir = '/data/storage/el2/base/files/Documents';
+    } else if (this.saveDir === '图片' || this.saveDir === 'Pictures') {
+      actualDir = '/data/storage/el2/base/files/Pictures';
+    }
     const task = fileTransferManager.createReceiveTask(
       requestId,
       request.device,
       request.files,
-      saveDir
+      actualDir
     );
 
     // 注册回调
@@ -118,7 +133,7 @@ export struct ReceiveTab {
     });
 
     // 接受请求
-    const success = await fileTransferManager.acceptReceive(requestId, saveDir);
+    const success = await fileTransferManager.acceptReceive(requestId, actualDir);
     if (success) {
       this.pendingRequests.delete(requestId);
       promptAction.showToast({ message: '开始接收文件...' });
@@ -136,230 +151,255 @@ export struct ReceiveTab {
     Stack({ alignContent: Alignment.TopEnd }) {
       // 右上角按钮
       Row() {
+        // 历史记录按钮
         Button({ type: ButtonType.Circle }) {
           Path()
-            .width(24)
-            .height(24)
-            .commands('M13,3 L13,11 L19,11 L19,13 L11,13 L11,3 L13,3 Z M12,21 C7.03,21 3,16.97 3,12 C3,7.03 7.03,3 12,3 L12,1 C5.92,1 1,5.92 1,12 C1,18.08 5.92,23 12,23 C18.08,23 23,18.08 23,12 L21,12 C21,16.97 16.97,21 12,21 Z')
-            .fill('#666666')
+            .width(36)
+            .height(36)
+            .commands('M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.11L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.25 2.52.77-1.28-3.52-2.09V8z')
+            .fill(gc('text_secondary'))
         }
-        .width(48)
-        .height(48)
-        .backgroundColor(Color.Transparent)
-        .margin({ right: 10 })
+        .width(56)
+        .height(56)
+        .backgroundColor(gc('transparent'))
         .onClick(() => {
-          // 显示传输历史
-          if (this.receiveTasks.length > 0) {
-            promptAction.showToast({ message: `有 ${this.receiveTasks.length} 个传输记录` });
-          } else {
-            promptAction.showToast({ message: '暂无接收历史' });
-          }
+          // 跳转到历史记录页面
+          router.pushUrl({ url: 'pages/TransferHistory' });
         })
 
+        // 信息按钮
         Button({ type: ButtonType.Circle }) {
           Path()
-            .width(24)
-            .height(24)
-            .commands('M12,2 C6.48,2 2,6.48 2,12 C2,17.52 6.48,22 12,22 C17.52,22 22,17.52 22,12 C22,6.48 17.52,2 12,2 Z M13,17 L11,17 L11,11 L13,11 L13,17 Z M13,9 L11,9 L11,7 L13,7 L13,9 Z')
-            .fill('#666666')
+            .width(36)
+            .height(36)
+            .commands('M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z')
+            .fill(gc('text_secondary'))
         }
-        .width(48)
-        .height(48)
-        .backgroundColor(Color.Transparent)
+        .width(56)
+        .height(56)
+        .backgroundColor(gc('transparent'))
         .onClick(() => {
           this.showAdvancedInfo = !this.showAdvancedInfo;
         })
       }
-      .margin({ top: 40, right: 20 })
+      .margin({ top: 40, right: 16 })
       .zIndex(1)
 
-      Column() {
-        // Logo & 雷达部分
+      Scroll() {
         Column() {
-          Stack() {
-            // 背景扩散环 (优化: 使用透明度渐变)
-            ForEach([1, 2, 3], (i: number) => {
-              Circle()
-                .width(120 + (this.animationAngle % 360 / 3.6) * i)
-                .height(120 + (this.animationAngle % 360 / 3.6) * i)
-                .fill(Color.Transparent)
-                .stroke(i === 1 ? '#007DFF' : '#33007DFF')
-                .strokeWidth(2)
-                .opacity(Math.max(0, 1 - (this.animationAngle % 360 / 360) * (i/1.5)))
-            })
-
-            Image($r('app.media.app_icon'))
-              .width(100)
-              .height(100)
-              .borderRadius(20)
-          }
-          .width(200)
-          .height(200)
-          .alignContent(Alignment.Center)
-          .margin({ top: 80, bottom: 40 })
-          
-          Text(this.aliasName)
-            .fontSize(32)
-            .fontWeight(FontWeight.Bold)
-          
-          Toggle({ type: ToggleType.Switch, isOn: this.isServerRunning })
-            .margin({ top: 10 })
-            .onChange((isOn: boolean) => {
-              this.isServerRunning = isOn;
-              if (isOn) {
-                localSendService.start(this.aliasName);
-              } else {
-                localSendService.stop();
-              }
-            })
-          
-          Text(this.isServerRunning ? this.localIps.map(ip => '#' + ip.split('.').pop()).join(' ') : '离线')
-            .fontSize(18)
-            .fontColor(Color.Gray)
-            .margin({ top: 8 })
-        }
-        .width('100%')
-        .alignItems(HorizontalAlign.Center)
-
-        // 待接收请求
-        if (this.pendingRequests.size > 0) {
+          // Logo & 雷达部分
           Column() {
-            Text('待接收文件')
-              .fontSize(16)
-              .fontWeight(FontWeight.Medium)
-              .width('100%')
-              .margin({ bottom: 12 })
-
-            ForEach(Array.from(this.pendingRequests.entries()), (entry: [string, FileRequestInfo]) => {
-              Column() {
-                Row() {
-                  Text(entry[1].device.alias)
-                    .fontSize(16)
-                    .fontWeight(FontWeight.Medium)
-                  
-                  Blank()
-                  
-                  Text(this.formatSize(entry[1].totalSize))
-                    .fontSize(14)
-                    .fontColor(Color.Gray)
-                }
-                .width('100%')
-                .margin({ bottom: 8 })
-
-                Text(`${entry[1].files.length} 个文件`)
-                  .fontSize(14)
-                  .fontColor(Color.Gray)
-                  .width('100%')
-                  .margin({ bottom: 12 })
-
-                Row() {
-                  Button('拒绝')
-                    .fontSize(14)
-                    .fontColor('#F44336')
-                    .backgroundColor('#1AF44336')
-                    .borderRadius(8)
-                    .onClick(() => this.rejectRequest(entry[0]))
-
-                  Blank()
-
-                  Button('接收')
-                    .fontSize(14)
-                    .fontColor('#4CAF50')
-                    .backgroundColor('#1A4CAF50')
-                    .borderRadius(8)
-                    .onClick(() => this.acceptRequest(entry[0]))
-                }
-                .width('100%')
-              }
-              .width('90%')
-              .padding(16)
-              .backgroundColor(Color.White)
-              .borderRadius(12)
-              .margin({ bottom: 12 })
-            })
-          }
-          .width('100%')
-          .padding({ left: 20, right: 20, top: 20 })
-        }
-
-        // 传输进度
-        if (this.receiveTasks.length > 0) {
-          Column() {
-            Text('传输中')
-              .fontSize(16)
-              .fontWeight(FontWeight.Medium)
-              .width('100%')
-              .margin({ bottom: 12 })
-
-            ForEach(this.receiveTasks, (task: TransferTask) => {
-              TransferProgressCard({
-                task: task,
-                onCancel: (taskId: string) => {
-                  fileTransferManager.cancelTransfer(taskId);
-                  this.updateTasks();
-                }
+            Stack() {
+              // 背景扩散环
+              ForEach([1, 2, 3], (i: number) => {
+                Circle()
+                  .width(120 + (this.animationAngle % 360 / 3.6) * i)
+                  .height(120 + (this.animationAngle % 360 / 3.6) * i)
+                  .fill(gc('transparent'))
+                  .stroke(i === 1 ? gc('accent') : gc('accent'))
+                  .strokeWidth(2)
+                  .opacity(Math.max(0, 1 - (this.animationAngle % 360 / 360) * (i / 1.5)))
               })
-            })
-          }
-          .width('100%')
-          .padding({ left: 20, right: 20, top: 20 })
-        }
 
-        // 高级信息卡片
-        if (this.showAdvancedInfo) {
-          Column() {
-            Row() {
-              Text('别名').width('30%').fontColor(Color.Gray)
-              Text(this.aliasName)
-            }.width('100%').margin({ bottom: 10 })
+              Image($r('app.media.app_icon'))
+                .width(140)
+                .height(140)
+                .borderRadius(28)
+            }
+            .width(240)
+            .height(240)
+            .alignContent(Alignment.Center)
+            .margin({ top: 80, bottom: 40 })
             
-            Row() {
-              Text('IP 地址').width('30%').fontColor(Color.Gray)
+            Text(this.aliasName)
+              .fontSize(28)
+              .fontWeight(FontWeight.Bold)
+            
+            Toggle({ type: ToggleType.Switch, isOn: this.isServerRunning })
+              .margin({ top: 10 })
+              .onChange((isOn: boolean) => {
+                this.isServerRunning = isOn;
+              })
+            
+            // 显示 IP 地址
+            if (this.isServerRunning && this.localIps.length > 0) {
               Column() {
                 ForEach(this.localIps, (ip: string) => {
                   Text(ip)
+                    .fontSize(14)
+                    .fontColor(gc('text_secondary'))
                 })
-              }.alignItems(HorizontalAlign.Start)
-            }.width('100%').margin({ bottom: 10 })
-            
-            Row() {
-              Text('端口').width('30%').fontColor(Color.Gray)
-              Text('53317')
-            }.width('100%')
-          }
-          .width('90%')
-          .padding(20)
-          .backgroundColor(Color.White)
-          .borderRadius(16)
-          .margin({ top: 20 })
-          .shadow({ radius: 10, color: '#1A000000' })
-        }
-
-        Blank()
-
-        // 快速保存
-        Column() {
-          Text('快速保存')
-            .fontSize(14)
-            .fontColor(Color.Gray)
-            .margin({ bottom: 10 })
-          
-          Row() {
-            this.QuickSaveButton('关闭', 0)
-            this.QuickSaveButton('收藏', 1)
-            this.QuickSaveButton('开启', 2)
+              }
+              .margin({ top: 8 })
+            } else if (!this.isServerRunning) {
+              Text(t('offline'))
+                .fontSize(16)
+                .fontColor(gc('text_tertiary'))
+                .margin({ top: 8 })
+            }
           }
           .width('100%')
-          .height(40)
-          .backgroundColor('#E9E9E9')
-          .borderRadius(20)
-          .padding(2)
+          .alignItems(HorizontalAlign.Center)
+
+          // 待接收请求
+          if (this.pendingRequests.size > 0) {
+            Column() {
+              Text(t('pending_files'))
+                .fontSize(18)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(gc('text_primary'))
+                .width('100%')
+                .margin({ bottom: 12 })
+
+              ForEach(Array.from(this.pendingRequests.entries()), (entry: [string, FileRequestInfo]) => {
+                Column() {
+                  Row() {
+                    Text(entry[1].device.alias)
+                      .fontSize(16)
+                      .fontWeight(FontWeight.Medium)
+                    
+                    Blank()
+                    
+                    Text(this.formatSize(entry[1].totalSize))
+                      .fontSize(14)
+                      .fontColor(Color.Gray)
+                  }
+                  .width('100%')
+                  .margin({ bottom: 8 })
+
+                  Text(`${entry[1].files.length} 个文件`)
+                    .fontSize(14)
+                    .fontColor(Color.Gray)
+                    .width('100%')
+                    .margin({ bottom: 12 })
+
+                  Row() {
+                    Button(t('reject'))
+                      .fontSize(14)
+                      .fontColor(gc('error'))
+                      .backgroundColor(gc('error_bg'))
+                      .borderRadius(8)
+                      .layoutWeight(1)
+                      .onClick(() => this.rejectRequest(entry[0]))
+
+                    Blank().width(16)
+
+                    Button(t('accept'))
+                      .fontSize(14)
+                      .fontColor(gc('success'))
+                      .backgroundColor(gc('success_bg'))
+                      .borderRadius(8)
+                      .layoutWeight(1)
+                      .onClick(() => this.acceptRequest(entry[0]))
+                  }
+                  .width('100%')
+                }
+                .width('100%')
+                .padding(16)
+                .backgroundColor(gc('bg_secondary'))
+                .borderRadius(12)
+                .margin({ bottom: 12 })
+              })
+            }
+            .width('90%')
+            .margin({ top: 20 })
+          }
+
+          // 传输进度
+          if (this.receiveTasks.length > 0) {
+            Column() {
+              Text(t('in_progress'))
+                .fontSize(18)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(gc('text_primary'))
+                .width('100%')
+                .margin({ bottom: 12 })
+
+              ForEach(this.receiveTasks, (task: TransferTask) => {
+                TransferProgressCard({
+                  task: task,
+                  onCancel: (taskId: string) => {
+                    fileTransferManager.cancelTransfer(taskId);
+                    this.updateTasks();
+                  }
+                })
+              })
+            }
+            .width('90%')
+            .margin({ top: 20 })
+          }
+
+          // 高级信息卡片
+          if (this.showAdvancedInfo) {
+            Column() {
+              Row() {
+                Text(t('device_alias'))
+                  .width('30%')
+                  .fontColor(gc('text_secondary'))
+                Text(this.aliasName)
+                  .fontColor(gc('text_primary'))
+              }
+              .width('100%')
+              .margin({ bottom: 10 })
+              
+              Row() {
+                Text(t('device_ip'))
+                  .width('30%')
+                  .fontColor(gc('text_secondary'))
+                Column() {
+                  ForEach(this.localIps, (ip: string) => {
+                    Text(ip).fontColor(gc('text_primary'))
+                  })
+                }
+                .alignItems(HorizontalAlign.Start)
+              }
+              .width('100%')
+              .margin({ bottom: 10 })
+              
+              Row() {
+                Text(t('device_port'))
+                  .width('30%')
+                  .fontColor(gc('text_secondary'))
+                Text(this.port.toString())
+                  .fontColor(gc('text_primary'))
+              }
+              .width('100%')
+            }
+            .width('90%')
+            .padding(20)
+            .backgroundColor(gc('bg_secondary'))
+            .borderRadius(16)
+            .margin({ top: 20 })
+            .shadow({ radius: 10, color: '#1A000000' })
+          }
+
+          // 快速保存
+          Column() {
+            Text(t('quick_save'))
+              .fontSize(14)
+              .fontColor(gc('text_secondary'))
+              .margin({ bottom: 10 })
+            
+            Row() {
+              this.QuickSaveButton(t('quick_save_off'), 0)
+              this.QuickSaveButton(t('quick_save_fav'), 1)
+              this.QuickSaveButton(t('quick_save_on'), 2)
+            }
+            .width('100%')
+            .height(40)
+            .backgroundColor(gc('divider'))
+            .borderRadius(20)
+            .padding(2)
+          }
+          .width('80%')
+          .margin({ top: 32, bottom: 40 })
         }
-        .width('80%')
-        .margin({ bottom: 40 })
+        .width('100%')
       }
       .width('100%')
       .height('100%')
+      .scrollBar(BarState.Off)
+      .backgroundColor(gc('bg_primary'))
     }
   }
 
@@ -369,11 +409,12 @@ export struct ReceiveTab {
       .height('100%')
       .textAlign(TextAlign.Center)
       .fontSize(14)
-      .fontColor(this.quickSaveMode === index ? Color.Black : Color.Gray)
-      .backgroundColor(this.quickSaveMode === index ? Color.White : Color.Transparent)
+      .fontColor(this.quickSaveMode === index ? gc('text_primary') : gc('text_secondary'))
+      .backgroundColor(this.quickSaveMode === index ? gc('bg_secondary') : gc('transparent'))
       .borderRadius(18)
       .onClick(() => {
         this.quickSaveMode = index;
+        this.settingsService.setQuickSaveMode(index);
       })
   }
 

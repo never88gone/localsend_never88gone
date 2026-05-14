@@ -4,7 +4,8 @@ import common from '@ohos.app.ability.common';
 
 // 设置数据结构
 export interface AppSettings {
-  theme: string; // 'system' | 'light' | 'dark'
+  theme: string; // 'system' | 'light' | 'dark' | 'black'
+  colorTheme: string; // 'blue' | 'green' | etc.
   language: string; // 'zh' | 'en'
   animationEnabled: boolean;
   quickSaveMode: number; // 0: 关, 1: 收藏, 2: 开
@@ -17,6 +18,7 @@ export interface AppSettings {
 // 默认设置
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
+  colorTheme: 'blue',
   language: 'zh',
   animationEnabled: true,
   quickSaveMode: 0,
@@ -28,6 +30,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 // 主题变更回调类型
 export type ThemeChangeCallback = (theme: string) => void;
+export type ColorThemeChangeCallback = (color: string) => void;
 export type LanguageChangeCallback = (language: string) => void;
 
 /**
@@ -41,6 +44,7 @@ export class SettingsService {
   
   // 设置变更回调
   private onThemeChange: ThemeChangeCallback | null = null;
+  private onColorThemeChange: ColorThemeChangeCallback | null = null;
   private onLanguageChange: LanguageChangeCallback | null = null;
   
   private constructor() {}
@@ -68,6 +72,10 @@ export class SettingsService {
     this.onThemeChange = callback;
   }
   
+  setColorThemeChangeCallback(callback: ColorThemeChangeCallback): void {
+    this.onColorThemeChange = callback;
+  }
+  
   setLanguageChangeCallback(callback: LanguageChangeCallback): void {
     this.onLanguageChange = callback;
   }
@@ -80,6 +88,7 @@ export class SettingsService {
     
     try {
       const theme = await this.prefs.get('theme', DEFAULT_SETTINGS.theme) as string;
+      const colorTheme = await this.prefs.get('colorTheme', DEFAULT_SETTINGS.colorTheme) as string;
       const language = await this.prefs.get('language', DEFAULT_SETTINGS.language) as string;
       const animationEnabled = await this.prefs.get('animationEnabled', DEFAULT_SETTINGS.animationEnabled) as boolean;
       const quickSaveMode = await this.prefs.get('quickSaveMode', DEFAULT_SETTINGS.quickSaveMode) as number;
@@ -90,6 +99,7 @@ export class SettingsService {
       
       const settings: AppSettings = {
         theme: theme,
+        colorTheme: colorTheme,
         language: language,
         animationEnabled: animationEnabled,
         quickSaveMode: quickSaveMode,
@@ -108,6 +118,11 @@ export class SettingsService {
   // 保存主题
   async setTheme(theme: string): Promise<boolean> {
     return await this.saveSetting('theme', theme);
+  }
+  
+  // 保存主题色彩
+  async setColorTheme(color: string): Promise<boolean> {
+    return await this.saveSetting('colorTheme', color);
   }
   
   // 保存语言
@@ -159,6 +174,8 @@ export class SettingsService {
       // 触发回调
       if (key === 'theme' && this.onThemeChange) {
         this.onThemeChange(value as string);
+      } else if (key === 'colorTheme' && this.onColorThemeChange) {
+        this.onColorThemeChange(value as string);
       } else if (key === 'language' && this.onLanguageChange) {
         this.onLanguageChange(value as string);
       }

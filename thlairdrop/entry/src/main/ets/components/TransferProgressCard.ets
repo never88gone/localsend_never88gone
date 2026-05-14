@@ -6,9 +6,13 @@
 
 import { TransferTask, TransferState, TransferDirection } from '../service/FileTransferManager';
 import promptAction from '@ohos.promptAction';
+import { gc } from '../utils/ThemeManager';
+import { t } from '../utils/I18nManager';
 
 @Component
 export struct TransferProgressCard {
+  @StorageProp('appTheme') currentTheme: string = 'system';
+  @StorageProp('appLanguage') currentLanguage: string = 'system';
   @Prop task: TransferTask;
   onCancel?: (taskId: string) => void;
   onRetry?: (taskId: string) => void;
@@ -23,18 +27,19 @@ export struct TransferProgressCard {
             .width(20)
             .height(20)
             .commands('M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z')
-            .fill('#007DFF')
+            .fill(gc('accent'))
         } else {
           Path()
             .width(20)
             .height(20)
             .commands('M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z')
-            .fill('#4CAF50')
+            .fill(gc('success'))
         }
 
-        Text(this.task.direction === TransferDirection.Send ? '发送' : '接收')
+        Text(this.task.direction === TransferDirection.Send ? t('tab_send') : t('tab_receive'))
           .fontSize(14)
           .fontWeight(FontWeight.Medium)
+          .fontColor(gc('text_primary'))
           .margin({ left: 8 })
 
         Blank()
@@ -50,10 +55,11 @@ export struct TransferProgressCard {
         Text(this.task.device.alias || 'Unknown')
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
+          .fontColor(gc('text_primary'))
         
         Text(`(${this.task.device.ip})`)
           .fontSize(12)
-          .fontColor(Color.Gray)
+          .fontColor(gc('text_secondary'))
           .margin({ left: 8 })
       }
       .width('100%')
@@ -61,16 +67,16 @@ export struct TransferProgressCard {
 
       // 文件数量和大小
       Row() {
-        Text(`${this.task.files.length} 个文件`)
+        Text(`${this.task.files.length} ${t('file')}`)
           .fontSize(14)
-          .fontColor(Color.Gray)
+          .fontColor(gc('text_secondary'))
         
         Text(' • ')
-          .fontColor(Color.Gray)
+          .fontColor(gc('text_tertiary'))
         
         Text(this.formatSize(this.task.totalSize))
           .fontSize(14)
-          .fontColor(Color.Gray)
+          .fontColor(gc('text_secondary'))
       }
       .width('100%')
       .margin({ bottom: 12 })
@@ -86,13 +92,13 @@ export struct TransferProgressCard {
           Row() {
             Text(`${this.task.progress.toFixed(1)}%`)
               .fontSize(12)
-              .fontColor(Color.Gray)
+              .fontColor(gc('text_secondary'))
             
             Blank()
             
             Text(`${this.formatSize(this.task.transferredSize)} / ${this.formatSize(this.task.totalSize)}`)
               .fontSize(12)
-              .fontColor(Color.Gray)
+              .fontColor(gc('text_secondary'))
           }
           .width('100%')
           .margin({ top: 4 })
@@ -108,11 +114,11 @@ export struct TransferProgressCard {
             .width(16)
             .height(16)
             .commands('M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z')
-            .fill('#F44336')
+            .fill(gc('error'))
           
-          Text('传输失败，请重试')
+          Text(t('failed'))
             .fontSize(12)
-            .fontColor('#F44336')
+            .fontColor(gc('error'))
             .margin({ left: 4 })
         }
         .width('100%')
@@ -122,28 +128,28 @@ export struct TransferProgressCard {
       // 操作按钮
       Row() {
         if (this.task.state === TransferState.InProgress) {
-          Button('取消')
+          Button(t('cancel'))
             .fontSize(14)
-            .fontColor('#F44336')
-            .backgroundColor('#1AF44336')
+            .fontColor(gc('error'))
+            .backgroundColor(gc('error_bg'))
             .borderRadius(8)
             .onClick(() => {
               this.onCancel?.(this.task.id);
             })
         } else if (this.task.state === TransferState.Failed) {
-          Button('重试')
+          Button(t('retry'))
             .fontSize(14)
-            .fontColor('#007DFF')
-            .backgroundColor('#1A007DFF')
+            .fontColor(gc('accent'))
+            .backgroundColor(gc('accent_bg'))
             .borderRadius(8)
             .onClick(() => {
               this.onRetry?.(this.task.id);
             })
         } else if (this.task.state === TransferState.Completed) {
-          Button('查看')
+          Button(t('view'))
             .fontSize(14)
-            .fontColor('#4CAF50')
-            .backgroundColor('#1A4CAF50')
+            .fontColor(gc('success'))
+            .backgroundColor(gc('success_bg'))
             .borderRadius(8)
             .onClick(() => {
               promptAction.showToast({ message: '功能开发中' });
@@ -155,7 +161,7 @@ export struct TransferProgressCard {
     }
     .width('100%')
     .padding(16)
-    .backgroundColor(Color.White)
+    .backgroundColor(gc('bg_secondary'))
     .borderRadius(12)
     .shadow({ radius: 4, color: '#0A000000', offsetY: 2 })
   }
@@ -163,39 +169,39 @@ export struct TransferProgressCard {
   @Builder StateLabel() {
     Row() {
       if (this.task.state === TransferState.Pending) {
-        Text('等待中')
+        Text(t('waiting'))
           .fontSize(12)
-          .fontColor('#FF9800')
+          .fontColor(gc('warning'))
           .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-          .backgroundColor('#1AFF9800')
+          .backgroundColor(gc('warning_bg'))
           .borderRadius(4)
       } else if (this.task.state === TransferState.InProgress) {
-        Text('传输中')
+        Text(t('in_progress'))
           .fontSize(12)
-          .fontColor('#007DFF')
+          .fontColor(gc('accent'))
           .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-          .backgroundColor('#1A007DFF')
+          .backgroundColor(gc('accent_bg'))
           .borderRadius(4)
       } else if (this.task.state === TransferState.Completed) {
-        Text('已完成')
+        Text(t('completed'))
           .fontSize(12)
-          .fontColor('#4CAF50')
+          .fontColor(gc('success'))
           .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-          .backgroundColor('#1A4CAF50')
+          .backgroundColor(gc('success_bg'))
           .borderRadius(4)
       } else if (this.task.state === TransferState.Failed) {
-        Text('失败')
+        Text(t('failed'))
           .fontSize(12)
-          .fontColor('#F44336')
+          .fontColor(gc('error'))
           .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-          .backgroundColor('#1AF44336')
+          .backgroundColor(gc('error_bg'))
           .borderRadius(4)
       } else if (this.task.state === TransferState.Cancelled) {
-        Text('已取消')
+        Text(t('cancelled'))
           .fontSize(12)
-          .fontColor(Color.Gray)
+          .fontColor(gc('text_secondary'))
           .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-          .backgroundColor('#1A999999')
+          .backgroundColor(gc('divider'))
           .borderRadius(4)
       }
     }
@@ -203,9 +209,9 @@ export struct TransferProgressCard {
 
   private getProgressColor(): ResourceColor {
     if (this.task.state === TransferState.Failed) {
-      return '#F44336';
+      return gc('error');
     }
-    return '#007DFF';
+    return gc('accent');
   }
 
   private formatSize(bytes: number): string {

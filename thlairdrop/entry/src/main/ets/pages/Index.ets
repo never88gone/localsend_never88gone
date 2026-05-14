@@ -1,30 +1,44 @@
 import hilog from '@ohos.hilog';
-import picker from '@ohos.file.picker';
 import common from '@ohos.app.ability.common';
-import { BusinessError } from '@ohos.base';
-import connection from '@ohos.net.connection';
-import deviceInfo from '@ohos.deviceInfo';
+import wifiManager from '@ohos.wifiManager';
 
 import { ReceiveTab } from '../components/ReceiveTab';
 import { SendTab } from '../components/SendTab';
 import { SettingsTab } from '../components/SettingsTab';
 import libEntry from 'libentry.so';
-import { DeviceInfo } from '../models/DeviceInfo';
+import { localSendService, Device } from '../service/LocalSendService';
 import { SettingsService } from '../services/SettingsService';
+import { gc } from '../utils/ThemeManager';
+import { t } from '../utils/I18nManager';
 
 @Entry
 @Component
 struct Index {
   @State currentIndex: number = 0;
-  @State discoveredDevices: DeviceInfo[] = [];
+  @State discoveredDevices: Device[] = [];
   
   // 核心状态
   @Watch('onAliasChanged') @State aliasName: string = 'HarmonyOS 设备';
   @Watch('onServerStatusChanged') @State isServerRunning: boolean = true;
   @State localIps: string[] = ['127.0.0.1'];
-
+  @State quickSaveMode: number = 0;
+  @State showAdvancedInfo: boolean = false;
+  @State animationAngle: number = 0;
+  @State animationEnabled: boolean = true;
+  @State port: number = 53317;
+  @State saveDir: string = '下载';
+  
+  @StorageLink('appLanguage') appLanguage: string = 'zh';
+  @StorageLink('appTheme') appTheme: string = 'light';
+  @StorageLink('appColorTheme') appColorTheme: string = 'blue';
+  
+  // 设置服务
+  private settingsService: SettingsService = SettingsService.getInstance();
+  private isSettingsLoaded: boolean = false;
+  
   onServerStatusChanged() {
-    hilog.info(0x0000, 'testTag', 'Server status changed to: ' + this.isServerRunning);
+    if (!this.isSettingsLoaded) return;
+    hilog.info(0x0000, 'Index', 'Server status changed to: ' + this.isServerRunning);
     try {
       if (this.isServerRunning) {
         libEntry.startServer(this.aliasName, this.port);
@@ -32,25 +46,20 @@ struct Index {
         libEntry.stopServer();
       }
     } catch (e) {
-      hilog.error(0x0000, 'testTag', 'Failed to toggle server status');
+      hilog.error(0x0000, 'Index', 'Failed to toggle server status');
     }
   }
-  @State quickSaveMode: number = 0; // 0: 关, 1: 收藏, 2: 开
-  @State showAdvancedInfo: boolean = false;
-  @State animationAngle: number = 0;
-  @State animationEnabled: boolean = true;
-  @State port: number = 53317;
-  
-  // 设置服务
-  private settingsService: SettingsService = SettingsService.getInstance();
   
   onAliasChanged() {
-    hilog.info(0x0000, 'testTag', 'Alias changed to: ' + this.aliasName);
+    if (!this.isSettingsLoaded) return;
+    hilog.info(0x0000, 'Index', 'Alias changed to: ' + this.aliasName);
+    // 保存别名到设置
+    this.settingsService.setAliasName(this.aliasName);
     try {
       libEntry.stopServer();
       libEntry.startServer(this.aliasName, this.port);
     } catch (e) {
-      hilog.error(0x0000, 'testTag', 'Failed to restart server on alias change');
+      hilog.error(0x0000, 'Index', 'Failed to restart server on alias change');
     }
   }
   
@@ -59,103 +68,95 @@ struct Index {
   private scanIntervalId: number = -1;
 
   aboutToAppear() {
-    hilog.info(0x0000, 'testTag', 'Starting App');
+    hilog.info(0x0000, 'Index', 'Starting App');
     
-    // 初始化设置服务
-    this.settingsService.init(getContext(this) as common.UIAbilityContext);
-    
-    // 加载保存的设置
-    this.loadSettings();
+    // 初始化应用
+    this.initApp();
     
     this.startAnimation();
-    this.updateLocalInfo();
+    this.updateLocalIps();
 
-    // 调用 NAPI 启动服务器
-    try {
-      this.isServerRunning = libEntry.startServer(this.aliasName, this.port);
-      hilog.info(0x0000, 'testTag', 'NAPI Server started: ' + this.isServerRunning);
-    } catch (e) {
-      hilog.error(0x0000, 'testTag', 'Failed to start NAPI server: ' + JSON.stringify(e));
-    }
-
-    // 定时扫描设备（通过 Rust NAPI）
+    // 定时扫描设备
     this.scanIntervalId = setInterval(() => {
-      if (this.currentIndex === 1) { // 仅在发送页扫描
+      if (this.currentIndex === 1) {
         this.scanDevices();
       }
     }, 3000);
   }
   
+  private async initApp() {
+    // 初始化设置服务
+    await this.settingsService.init(getContext(this) as common.UIAbilityContext);
+    
+    // 加载保存的设置
+    await this.loadSettings();
+  }
+  
   // 加载设置
-  private loadSettings(): void {
-    this.settingsService.getSettings().then((settings) => {
+  private async loadSettings(): Promise<void> {
+    try {
+      const settings = await this.settingsService.getSettings();
       this.aliasName = settings.aliasName;
       this.quickSaveMode = settings.quickSaveMode;
       this.animationEnabled = settings.animationEnabled;
       this.port = settings.port;
-    }).catch((err: Error) => {
-      hilog.error(0x0000, 'testTag', 'Failed to load settings: ' + err.message);
-    });
-  }
-
-  // 扫描设备（调用 Rust NAPI）
-  private scanDevices() {
-    try {
-      let devicesStr = libEntry.scanDevices();
-      hilog.info(0x0000, 'testTag', 'Scanned devices: ' + devicesStr);
-      if (devicesStr && devicesStr !== '[]') {
-        let devices = JSON.parse(devicesStr) as DeviceInfo[];
-        this.discoveredDevices = devices;
-      }
-    } catch (e) {
-      hilog.error(0x0000, 'testTag', 'Failed to scan devices: ' + JSON.stringify(e));
+      this.saveDir = settings.saveDir;
+      
+      // 全局应用主题和语言
+      AppStorage.setOrCreate('appTheme', settings.theme);
+      AppStorage.setOrCreate('appLanguage', settings.language);
+      AppStorage.setOrCreate('appColorTheme', settings.colorTheme);
+      
+      this.isSettingsLoaded = true;
+      
+      // 设置加载完成后启动服务器
+      this.isServerRunning = libEntry.startServer(this.aliasName, this.port);
+      hilog.info(0x0000, 'Index', 'Settings loaded, server started: ' + this.isServerRunning);
+    } catch (err) {
+      const error = err as Error;
+      hilog.error(0x0000, 'Index', 'Failed to load settings: ' + error.message);
+      this.isSettingsLoaded = true;
+      // 使用默认设置启动服务器
+      this.isServerRunning = libEntry.startServer(this.aliasName, this.port);
     }
   }
 
-  updateLocalInfo() {
-    // 获取设备别名
-    this.aliasName = deviceInfo.marketName || deviceInfo.productModel || 'HarmonyOS 设备';
-    
-    // 获取局域网 IP
-    connection.getAllNets((err, nets) => {
-      if (!err) {
-        nets.forEach(net => {
-          connection.getConnectionProperties(net, (err, props) => {
-            if (!err && props.linkAddresses) {
-              props.linkAddresses.forEach(addr => {
-                let ip = addr.address.address;
-                if (ip && !ip.includes(':') && ip !== '127.0.0.1') {
-                  if (!this.localIps.includes(ip)) {
-                    this.localIps.push(ip);
-                  }
-                }
-              });
-            }
-          });
-        });
-      }
-    });
-
-    // 同时尝试从 NAPI 获取更详细的 Rust 侧网络信息
+  private scanDevices() {
     try {
-      let networkInfo = libEntry.getLocalNetworkInfo();
-      hilog.info(0x0000, 'testTag', 'NAPI Network Info: ' + networkInfo);
+      let devices = localSendService.scanDevices();
+      if (devices && devices.length > 0) {
+        this.discoveredDevices = devices;
+      }
     } catch (e) {
-      hilog.error(0x0000, 'testTag', 'Failed to get NAPI network info: ' + JSON.stringify(e));
+      hilog.error(0x0000, 'Index', 'Failed to scan devices: ' + JSON.stringify(e));
+    }
+  }
+
+  // 更新本地 IP
+  updateLocalIps() {
+    try {
+      let ipInfo = wifiManager.getIpInfo();
+      if (ipInfo && ipInfo.ipAddress) {
+        let ip = ipInfo.ipAddress;
+        let ipString = `${(ip) & 0xFF}.${(ip >> 8) & 0xFF}.${(ip >> 16) & 0xFF}.${(ip >>> 24) & 0xFF}`;
+        if (!this.localIps.includes(ipString)) {
+          this.localIps.push(ipString);
+        }
+      }
+    } catch (e) {
+      hilog.error(0x0000, 'Index', 'Failed to get IP from wifiManager: ' + JSON.stringify(e));
     }
   }
 
   aboutToDisappear() {
     this.stopAnimation();
-    // 清理扫描定时器
     if (this.scanIntervalId !== -1) {
       clearInterval(this.scanIntervalId);
     }
-    // 停止服务器
     try {
       libEntry.stopServer();
     } catch (e) {
-      hilog.error(0x0000, 'testTag', 'Failed to stop server');
+      hilog.error(0x0000, 'Index', 'Failed to stop server');
     }
   }
 
@@ -178,21 +179,48 @@ struct Index {
 
   @Builder TabBuilder(title: string, targetIndex: number) {
     Column() {
-      // 使用 Path 代替 Image 占位符
-      Path()
-        .width(28)
-        .height(28)
-        .commands(title === '接收' ? 'M12,2 L12,14 M12,14 L16,10 M12,14 L8,10 M4,20 L20,20' : 
-                  title === '发送' ? 'M12,22 L12,10 M12,10 L16,14 M12,10 L8,14 M4,4 L20,4' : 
-                  'M12,15.5 A3.5,3.5 0 1,1 12,8.5 A3.5,3.5 0 1,1 12,15.5 M19.4,13 L22,13 L22,11 L19.4,11 M4.6,13 L2,13 L2,11 L4.6,11')
-        .fill(this.currentIndex === targetIndex ? '#007DFF' : '#999999')
-        .stroke(this.currentIndex === targetIndex ? '#007DFF' : '#999999')
-        .strokeWidth(2)
+      // 图标
+      if (title === 'tab_receive') {
+        // 下载图标
+        Column() {
+          Path()
+            .width(36)
+            .height(36)
+            .commands('M12 16l-6-6h4V4h4v6h4l-6 6zm-8 4v-2h16v2H4z')
+            .fill(this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary'))
+        }
+        .width(64)
+        .height(36)
+        .justifyContent(FlexAlign.Center)
+      } else if (title === 'tab_send') {
+        // 上传图标
+        Column() {
+          Path()
+            .width(36)
+            .height(36)
+            .commands('M12 8l6 6h-4v6h-4v-6H6l6-6zm8-4v2H4V4h16z')
+            .fill(this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary'))
+        }
+        .width(64)
+        .height(36)
+        .justifyContent(FlexAlign.Center)
+      } else {
+        // 设置图标
+        Column() {
+          Path()
+            .width(36)
+            .height(36)
+            .commands('M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.44.17-.47.41l-.37 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.04.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.37-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.21.08-.47-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z')
+            .fill(this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary'))
+        }
+        .width(64)
+        .height(36)
+        .justifyContent(FlexAlign.Center)
+      }
       
-      Text(title)
-        .fontColor(this.currentIndex === targetIndex ? '#007DFF' : '#999999')
+      Text(t(title))
+        .fontColor(this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary'))
         .fontSize(12)
-        .margin({ top: 4 })
     }
     .width('100%')
     .height(56)
@@ -208,29 +236,32 @@ struct Index {
       TabContent() {
         ReceiveTab({ 
           aliasName: $aliasName, 
-          isServerRunning: $isServerRunning, 
+          isServerRunning: $isServerRunning,
           localIps: $localIps,
           quickSaveMode: $quickSaveMode,
           showAdvancedInfo: $showAdvancedInfo,
-          animationAngle: $animationAngle
+          animationAngle: $animationAngle,
+          saveDir: $saveDir,
+          port: $port
         })
       }
-      .tabBar(this.TabBuilder('接收', 0))
+      .tabBar(this.TabBuilder('tab_receive', 0))
 
       TabContent() {
         SendTab({ devices: $discoveredDevices })
       }
-      .tabBar(this.TabBuilder('发送', 1))
+      .tabBar(this.TabBuilder('tab_send', 1))
 
       TabContent() {
         SettingsTab({
           aliasName: $aliasName,
           quickSaveMode: $quickSaveMode,
           animationEnabled: $animationEnabled,
-          port: $port
+          port: $port,
+          saveDir: $saveDir
         })
       }
-      .tabBar(this.TabBuilder('设置', 2))
+      .tabBar(this.TabBuilder('tab_settings', 2))
     }
     .vertical(false)
     .barMode(BarMode.Fixed)
@@ -242,6 +273,6 @@ struct Index {
     })
     .width('100%')
     .height('100%')
-    .backgroundColor('#F1F3F5')
+    .backgroundColor(gc('bg_primary'))
   }
 }

@@ -8,6 +8,8 @@ import { localSendService, NetworkInfo } from '../service/LocalSendService';
 
 @Component
 export struct ServerStatus {
+  @StorageProp('appTheme') currentTheme: string = 'system';
+  @StorageProp('appLanguage') currentLanguage: string = 'system';
   @State isRunning: boolean = false;
   @State networkInfo: NetworkInfo | null = null;
   @Prop alias: string = 'HarmonyOS Device';

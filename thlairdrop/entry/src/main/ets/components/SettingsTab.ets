@@ -1,8 +1,10 @@
 import promptAction from '@ohos.promptAction';
-import { BusinessError } from '@ohos.base';
 import hilog from '@ohos.hilog';
 import common from '@ohos.app.ability.common';
 import { SettingsService, AppSettings } from '../services/SettingsService';
+import { SelectPickerDialog, SelectOption } from './SelectPickerDialog';
+import { gc } from '../utils/ThemeManager';
+import { t } from '../utils/I18nManager';
 
 // 设置项接口
 interface SettingsItem {
@@ -13,6 +15,47 @@ interface SettingsItem {
   isOn?: boolean;
   onClick?: () => void;
 }
+
+// 主题选项
+const getThemeOptions = (): SelectOption[] => [
+  { value: 'system', label: t('theme_system') },
+  { value: 'light', label: t('theme_light') },
+  { value: 'dark', label: t('theme_dark') },
+  { value: 'black', label: t('theme_black') }
+];
+
+// 色彩选项
+const getColorOptions = (): SelectOption[] => [
+  { value: 'blue', label: t('color_blue') },
+  { value: 'green', label: t('color_green') },
+  { value: 'yellow', label: t('color_yellow') },
+  { value: 'orange', label: t('color_orange') },
+  { value: 'red', label: t('color_red') },
+  { value: 'pink', label: t('color_pink') },
+  { value: 'purple', label: t('color_purple') },
+  { value: 'teal', label: t('color_teal') }
+];
+
+// 语言选项
+const getLanguageOptions = (): SelectOption[] => [
+  { value: 'system', label: t('language_system') },
+  { value: 'zh', label: '中文' },
+  { value: 'en', label: 'English' }
+];
+
+// 快速保存选项
+const getQuickSaveOptions = (): SelectOption[] => [
+  { value: '0', label: t('quick_save_off') },
+  { value: '1', label: t('quick_save_fav') },
+  { value: '2', label: t('quick_save_on') }
+];
+
+// 保存目录选项
+const getSaveDirOptions = (): SelectOption[] => [
+  { value: '下载', label: '下载' },
+  { value: '图片', label: '图片' },
+  { value: '文档', label: '文档' }
+];
 
 @Component
 export struct SettingsTab {
@@ -27,9 +70,15 @@ export struct SettingsTab {
   
   // 设置状态
   @State theme: string = 'system';
-  @State language: string = 'zh';
+  @State colorTheme: string = 'blue';
+  @State language: string = 'system';
   @State encryptionEnabled: boolean = true;
-  @State saveDir: string = '下载';
+  @Link saveDir: string;
+  
+  // 用于全局响应主题和语言的刷新
+  @StorageProp('appTheme') currentTheme: string = 'system';
+  @StorageProp('appColorTheme') currentColorTheme: string = 'blue';
+  @StorageProp('appLanguage') currentLanguage: string = 'system';
   
   // 弹窗状态
   @State showAliasDialog: boolean = false;
@@ -37,10 +86,81 @@ export struct SettingsTab {
   @State tempAliasName: string = '';
   @State tempPort: string = '';
   
+  // 选择弹窗状态
+  @State showThemePicker: boolean = false;
+  @State showLanguagePicker: boolean = false;
+  @State showQuickSavePicker: boolean = false;
+  @State showSaveDirPicker: boolean = false;
+  
+  // 主题弹窗控制器
+  private themeDialogController: CustomDialogController = new CustomDialogController({
+    builder: SelectPickerDialog({
+      title: t('theme_title'),
+      options: getThemeOptions(),
+      currentValue: this.theme,
+      onSelected: (value: string) => this.onThemeSelected(value)
+    }),
+    autoCancel: true,
+    alignment: DialogAlignment.Center
+  });
+  
+  // 色彩弹窗控制器
+  private colorThemeDialogController: CustomDialogController = new CustomDialogController({
+    builder: SelectPickerDialog({
+      title: t('color_title'),
+      options: getColorOptions(),
+      currentValue: this.colorTheme,
+      onSelected: (value: string) => this.onColorThemeSelected(value)
+    }),
+    autoCancel: true,
+    alignment: DialogAlignment.Center
+  });
+  
+  // 语言弹窗控制器
+  private languageDialogController: CustomDialogController = new CustomDialogController({
+    builder: SelectPickerDialog({
+      title: t('language_title'),
+      options: getLanguageOptions(),
+      currentValue: this.language,
+      onSelected: (value: string) => this.onLanguageSelected(value)
+    }),
+    autoCancel: true,
+    alignment: DialogAlignment.Center
+  });
+  
+  // 快速保存弹窗控制器
+  private quickSaveDialogController: CustomDialogController = new CustomDialogController({
+    builder: SelectPickerDialog({
+      title: t('quick_save'),
+      options: getQuickSaveOptions(),
+      currentValue: this.quickSaveMode.toString(),
+      onSelected: (value: string) => this.onQuickSaveSelected(value)
+    }),
+    autoCancel: true,
+    alignment: DialogAlignment.Center
+  });
+  
+  // 保存目录弹窗控制器
+  private saveDirDialogController: CustomDialogController = new CustomDialogController({
+    builder: SelectPickerDialog({
+      title: t('save_dir'),
+      options: getSaveDirOptions(),
+      currentValue: this.saveDir,
+      onSelected: (value: string) => this.onSaveDirSelected(value)
+    }),
+    autoCancel: true,
+    alignment: DialogAlignment.Center
+  });
+  
   aboutToAppear(): void {
     // 获取 context
     this.context = getContext(this) as common.UIAbilityContext;
-    // 加载保存的设置
+    // 初始化并加载保存的设置
+    this.initAndLoadSettings();
+  }
+  
+  private async initAndLoadSettings(): Promise<void> {
+    await this.settingsService.init(this.context!);
     this.loadSettings();
   }
   
@@ -48,6 +168,7 @@ export struct SettingsTab {
   private loadSettings(): void {
     this.settingsService.getSettings().then((settings: AppSettings) => {
       this.theme = settings.theme;
+      this.colorTheme = settings.colorTheme;
       this.language = settings.language;
       this.animationEnabled = settings.animationEnabled;
       this.quickSaveMode = settings.quickSaveMode;
@@ -55,35 +176,108 @@ export struct SettingsTab {
       this.port = settings.port;
       this.encryptionEnabled = settings.encryptionEnabled;
       this.aliasName = settings.aliasName;
+      
+      // 应用主题
+      this.applyTheme(this.theme);
+      this.applyColorTheme(this.colorTheme);
     }).catch((err: Error) => {
       hilog.error(0x0000, 'SettingsTab', `Failed to load settings: ${err.message}`);
     });
+  }
+  
+  // 应用主题
+  private applyTheme(theme: string): void {
+    // 存储到全局状态，供其他组件使用
+    AppStorage.setOrCreate('appTheme', theme);
+    hilog.info(0x0000, 'SettingsTab', `Theme applied: ${theme}`);
+  }
+
+  // 应用色彩
+  private applyColorTheme(color: string): void {
+    AppStorage.setOrCreate('appColorTheme', color);
+    hilog.info(0x0000, 'SettingsTab', `Color Theme applied: ${color}`);
+  }
+  
+  // 应用语言
+  private applyLanguage(language: string): void {
+    // 存储到全局状态，供其他组件使用
+    AppStorage.setOrCreate('appLanguage', language);
+    hilog.info(0x0000, 'SettingsTab', `Language applied: ${language}`);
+  }
+  
+  // 主题选择回调
+  private onThemeSelected(value: string): void {
+    this.theme = value;
+    this.settingsService.setTheme(value);
+    this.applyTheme(value);
+    const label = getThemeOptions().find(o => o.value === value)?.label || value;
+    promptAction.showToast({ message: '主题已切换为: ' + label });
+  }
+  
+  // 色彩选择回调
+  private onColorThemeSelected(value: string): void {
+    this.colorTheme = value;
+    this.settingsService.setColorTheme(value);
+    this.applyColorTheme(value);
+    const label = getColorOptions().find(o => o.value === value)?.label || value;
+    promptAction.showToast({ message: '色彩已切换为: ' + label });
+  }
+  
+  // 语言选择回调
+  private onLanguageSelected(value: string): void {
+    this.language = value;
+    this.settingsService.setLanguage(value);
+    this.applyLanguage(value);
+    const label = getLanguageOptions().find(o => o.value === value)?.label || value;
+    promptAction.showToast({ message: '语言已切换为: ' + label });
+  }
+  
+  // 快速保存选择回调
+  private onQuickSaveSelected(value: string): void {
+    this.quickSaveMode = parseInt(value);
+    this.settingsService.setQuickSaveMode(this.quickSaveMode);
+    const label = getQuickSaveOptions().find(o => o.value === value)?.label || value;
+    promptAction.showToast({ message: '快速保存已设置为: ' + label });
+  }
+  
+  // 保存目录选择回调
+  private onSaveDirSelected(value: string): void {
+    this.saveDir = value;
+    this.settingsService.setSaveDir(value);
+    promptAction.showToast({ message: '保存目录已设置为: ' + value });
   }
 
   build() {
     Scroll() {
       Column() {
-        Text('设置')
+        Text(t('tab_settings'))
           .fontSize(28)
           .fontWeight(FontWeight.Bold)
+          .fontColor(gc('text_primary'))
           .width('100%')
           .padding({ left: 32, top: 48, bottom: 24 })
 
-        this.SettingsSection('常规', [
+        this.SettingsSection(t('general_settings'), [
           { 
-            label: '主题', 
-            value: this.settingsService.getThemeDisplayName(this.theme), 
+            label: t('theme_title'), 
+            value: getThemeOptions().find(o => o.value === this.theme)?.label || this.theme, 
             key: 'theme',
-            onClick: (): void => this.showThemePicker()
+            onClick: (): void => { this.themeDialogController.open(); }
           },
           { 
-            label: '语言', 
-            value: this.settingsService.getLanguageDisplayName(this.language), 
+            label: t('color_title'), 
+            value: getColorOptions().find(o => o.value === this.colorTheme)?.label || this.colorTheme, 
+            key: 'colorTheme',
+            onClick: (): void => { this.colorThemeDialogController.open(); }
+          },
+          { 
+            label: t('language_title'), 
+            value: getLanguageOptions().find(o => o.value === this.language)?.label || this.language, 
             key: 'lang',
-            onClick: (): void => this.showLanguagePicker()
+            onClick: (): void => { this.languageDialogController.open(); }
           },
           { 
-            label: '动画', 
+            label: t('animation_title'), 
             value: '', 
             isToggle: true, 
             isOn: this.animationEnabled,
@@ -92,41 +286,33 @@ export struct SettingsTab {
           }
         ])
 
-        this.SettingsSection('接收', [
+        this.SettingsSection(t('receive_settings'), [
           { 
-            label: '快速保存', 
-            value: this.settingsService.getQuickSaveModeDisplayName(this.quickSaveMode),
+            label: t('quick_save'), 
+            value: getQuickSaveOptions().find(o => o.value === this.quickSaveMode.toString())?.label || this.quickSaveMode.toString(),
             key: 'quickSave',
-            onClick: (): void => this.showQuickSavePicker()
+            onClick: (): void => { this.quickSaveDialogController.open(); }
           },
           { 
-            label: '保存目录', 
+            label: t('save_dir'), 
             value: this.saveDir,
             key: 'dir',
-            onClick: (): void => this.selectSaveDir()
+            onClick: (): void => { this.saveDirDialogController.open(); }
           }
         ])
 
-        this.SettingsSection('网络', [
+        this.SettingsSection(t('network_settings'), [
           { 
-            label: '别名', 
+            label: t('device_alias'), 
             value: this.aliasName, 
             key: 'alias',
             onClick: (): void => this.showAliasInputDialog()
           },
           { 
-            label: '端口', 
+            label: t('device_port'), 
             value: this.port.toString(),
             key: 'port',
             onClick: (): void => this.showPortInputDialog()
-          },
-          { 
-            label: '加密', 
-            value: '', 
-            isToggle: true, 
-            isOn: this.encryptionEnabled,
-            key: 'encryption',
-            onClick: (): void => this.toggleEncryption()
           }
         ])
 
@@ -136,16 +322,17 @@ export struct SettingsTab {
             .width(80).height(80)
             .borderRadius(16)
             .margin({ top: 48, bottom: 12 })
-          Text('糖葫芦投送')
+          Text(t('app_name'))
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
+            .fontColor(gc('text_primary'))
           Text('版本: 1.0.0')
             .fontSize(14)
-            .fontColor(Color.Gray)
+            .fontColor(gc('text_secondary'))
             .margin({ top: 4 })
-          Text('© 2024 糖葫芦团队')
+          Text(t('copy_right'))
             .fontSize(12)
-            .fontColor('#999999')
+            .fontColor(gc('text_tertiary'))
             .margin({ top: 8 })
         }
         .width('100%')
@@ -156,15 +343,15 @@ export struct SettingsTab {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F1F3F5')
+    .backgroundColor(gc('bg_primary'))
     .bindSheet(this.showAliasDialog, this.AliasInputDialog(), {
       height: 200,
-      backgroundColor: Color.White,
+      backgroundColor: gc('bg_secondary'),
       dragBar: true
     })
     .bindSheet(this.showPortDialog, this.PortInputDialog(), {
       height: 200,
-      backgroundColor: Color.White,
+      backgroundColor: gc('bg_secondary'),
       dragBar: true
     })
   }
@@ -172,12 +359,13 @@ export struct SettingsTab {
   // 别名输入弹窗
   @Builder AliasInputDialog() {
     Column() {
-      Text('修改别名')
+      Text(t('change_alias'))
         .fontSize(18)
         .fontWeight(FontWeight.Medium)
+        .fontColor(gc('text_primary'))
         .margin({ top: 16, bottom: 16 })
       
-      TextInput({ text: this.tempAliasName, placeholder: '请输入设备别名' })
+      TextInput({ text: this.tempAliasName, placeholder: t('input_alias') })
         .width('90%')
         .height(48)
         .onChange((value: string) => {
@@ -185,15 +373,15 @@ export struct SettingsTab {
         })
       
       Row() {
-        Button('取消')
+        Button(t('cancel'))
           .width('40%')
-          .backgroundColor('#F1F3F5')
-          .fontColor('#333333')
+          .backgroundColor(gc('bg_primary'))
+          .fontColor(gc('text_primary'))
           .onClick(() => {
             this.showAliasDialog = false;
           })
         
-        Button('确定')
+        Button(t('confirm'))
           .width('40%')
           .onClick(() => {
             if (this.tempAliasName.trim()) {
@@ -215,12 +403,13 @@ export struct SettingsTab {
   // 端口输入弹窗
   @Builder PortInputDialog() {
     Column() {
-      Text('修改端口')
+      Text(t('change_port'))
         .fontSize(18)
         .fontWeight(FontWeight.Medium)
+        .fontColor(gc('text_primary'))
         .margin({ top: 16, bottom: 16 })
       
-      TextInput({ text: this.tempPort, placeholder: '请输入端口号 (1024-65535)' })
+      TextInput({ text: this.tempPort, placeholder: t('input_port') })
         .width('90%')
         .height(48)
         .type(InputType.Number)
@@ -229,15 +418,15 @@ export struct SettingsTab {
         })
       
       Row() {
-        Button('取消')
+        Button(t('cancel'))
           .width('40%')
-          .backgroundColor('#F1F3F5')
-          .fontColor('#333333')
+          .backgroundColor(gc('bg_primary'))
+          .fontColor(gc('text_primary'))
           .onClick(() => {
             this.showPortDialog = false;
           })
         
-        Button('确定')
+        Button(t('confirm'))
           .width('40%')
           .onClick(() => {
             const newPort = parseInt(this.tempPort);
@@ -259,61 +448,6 @@ export struct SettingsTab {
     .padding(16)
   }
 
-  // 显示主题选择器
-  private showThemePicker() {
-    promptAction.showDialog({
-      title: '选择主题',
-      buttons: [
-        { text: '跟随系统', color: this.theme === 'system' ? '#007DFF' : '#333333' },
-        { text: '浅色模式', color: this.theme === 'light' ? '#007DFF' : '#333333' },
-        { text: '深色模式', color: this.theme === 'dark' ? '#007DFF' : '#333333' }
-      ]
-    }).then((result: promptAction.ShowDialogSuccessResponse) => {
-      const themes: string[] = ['system', 'light', 'dark'];
-      this.theme = themes[result.index];
-      this.settingsService.setTheme(this.theme);
-      promptAction.showToast({ message: '主题已切换为: ' + this.settingsService.getThemeDisplayName(this.theme) });
-    }).catch((err: BusinessError) => {
-      hilog.error(0x0000, 'SettingsTab', `Theme picker error: ${err.message}`);
-    });
-  }
-
-  // 显示语言选择器
-  private showLanguagePicker() {
-    promptAction.showDialog({
-      title: '选择语言',
-      buttons: [
-        { text: '中文', color: this.language === 'zh' ? '#007DFF' : '#333333' },
-        { text: 'English', color: this.language === 'en' ? '#007DFF' : '#333333' }
-      ]
-    }).then((result: promptAction.ShowDialogSuccessResponse) => {
-      const languages: string[] = ['zh', 'en'];
-      this.language = languages[result.index];
-      this.settingsService.setLanguage(this.language);
-      promptAction.showToast({ message: '语言已切换为: ' + this.settingsService.getLanguageDisplayName(this.language) });
-    }).catch((err: BusinessError) => {
-      hilog.error(0x0000, 'SettingsTab', `Language picker error: ${err.message}`);
-    });
-  }
-
-  // 显示快速保存选择器
-  private showQuickSavePicker() {
-    promptAction.showDialog({
-      title: '快速保存模式',
-      buttons: [
-        { text: '关闭', color: this.quickSaveMode === 0 ? '#007DFF' : '#333333' },
-        { text: '收藏', color: this.quickSaveMode === 1 ? '#007DFF' : '#333333' },
-        { text: '开启', color: this.quickSaveMode === 2 ? '#007DFF' : '#333333' }
-      ]
-    }).then((result: promptAction.ShowDialogSuccessResponse) => {
-      this.quickSaveMode = result.index;
-      this.settingsService.setQuickSaveMode(this.quickSaveMode);
-      promptAction.showToast({ message: '快速保存已设置为: ' + this.settingsService.getQuickSaveModeDisplayName(this.quickSaveMode) });
-    }).catch((err: BusinessError) => {
-      hilog.error(0x0000, 'SettingsTab', `QuickSave picker error: ${err.message}`);
-    });
-  }
-
   // 切换动画
   private toggleAnimation(): void {
     this.animationEnabled = !this.animationEnabled;
@@ -321,32 +455,6 @@ export struct SettingsTab {
     promptAction.showToast({ message: this.animationEnabled ? '动画已开启' : '动画已关闭' });
   }
 
-  // 切换加密
-  private toggleEncryption(): void {
-    this.encryptionEnabled = !this.encryptionEnabled;
-    this.settingsService.setEncryptionEnabled(this.encryptionEnabled);
-    promptAction.showToast({ message: this.encryptionEnabled ? '加密已开启' : '加密已关闭' });
-  }
-
-  // 选择保存目录
-  private selectSaveDir(): void {
-    // HarmonyOS 暂不支持文件夹选择器，使用预设目录
-    promptAction.showDialog({
-      title: '选择保存目录',
-      buttons: [
-        { text: '下载', color: this.saveDir === '下载' ? '#007DFF' : '#333333' },
-        { text: '图片', color: this.saveDir === '图片' ? '#007DFF' : '#333333' },
-        { text: '文档', color: this.saveDir === '文档' ? '#007DFF' : '#333333' }
-      ]
-    }).then((result: promptAction.ShowDialogSuccessResponse) => {
-      const dirs: string[] = ['下载', '图片', '文档'];
-      this.saveDir = dirs[result.index];
-      this.settingsService.setSaveDir(this.saveDir);
-      promptAction.showToast({ message: '保存目录已设置为: ' + this.saveDir });
-    }).catch((err: BusinessError) => {
-      hilog.error(0x0000, 'SettingsTab', `SaveDir picker error: ${err.message}`);
-    });
-  }
 
   // 显示别名输入弹窗
   private showAliasInputDialog() {
@@ -364,7 +472,7 @@ export struct SettingsTab {
     Column() {
       Text(title)
         .fontSize(14)
-        .fontColor('#007DFF')
+        .fontColor(gc('accent'))
         .fontWeight(FontWeight.Medium)
         .margin({ left: 32, bottom: 10 })
       
@@ -373,13 +481,13 @@ export struct SettingsTab {
           this.SettingsRow(item.label, item.value, item.isToggle, item.isOn, item.onClick)
           if (index < items.length - 1) {
             Divider()
-              .color('#EEEEEE')
+              .color(gc('divider'))
               .strokeWidth(0.5)
               .margin({ left: 16, right: 16 })
           }
         })
       }
-      .backgroundColor(Color.White)
+      .backgroundColor(gc('bg_secondary'))
       .borderRadius(16)
       .margin({ left: 16, right: 16 })
     }
@@ -392,13 +500,13 @@ export struct SettingsTab {
     Row() {
       Text(label)
         .fontSize(16)
-        .fontColor('#111111')
+        .fontColor(gc('text_primary'))
       
       Blank()
       
       if (isToggle) {
         Toggle({ type: ToggleType.Switch, isOn: isOn ?? true })
-          .selectedColor('#007DFF')
+          .selectedColor(gc('accent'))
           .onChange((isOn: boolean) => {
             if (onClick) onClick();
           })
@@ -406,15 +514,15 @@ export struct SettingsTab {
         Row() {
           Text(value)
             .fontSize(14)
-            .fontColor(Color.Gray)
+            .fontColor(gc('text_secondary'))
           // 右箭头图标
           Path()
             .width(12)
             .height(20)
             .commands('M2 2L10 10L2 18')
-            .stroke('#999999')
+            .stroke(gc('text_tertiary'))
             .strokeWidth(2)
-            .fill(Color.Transparent)
+            .fill(gc('transparent'))
             .margin({ left: 8 })
         }
         .alignItems(VerticalAlign.Center)

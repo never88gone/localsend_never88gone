@@ -53,6 +53,7 @@ export interface FileInfo {
   size: number;
   fileType?: string;
   preview?: string;
+  filePath?: string;
 }
 
 /**
