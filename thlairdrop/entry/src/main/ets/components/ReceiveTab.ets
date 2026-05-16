@@ -4,7 +4,7 @@ import { fileTransferManager, TransferTask, TransferState, TransferDirection } f
 import { localSendService, Device, FileInfo, DeviceType } from '../service/LocalSendService';
 import { TransferProgressCard } from './TransferProgressCard';
 import { SettingsService } from '../services/SettingsService';
-import { gc } from '../utils/ThemeManager';
+import { gc, ThemeManager } from '../utils/ThemeManager';
 import { t } from '../utils/I18nManager';
 
 // 文件请求信息
@@ -39,7 +39,14 @@ interface FileItemJson {
 export struct ReceiveTab {
   @StorageProp('appTheme') currentTheme: string = 'system';
   @StorageProp('appLanguage') currentLanguage: string = 'system';
+  @Watch('onRefreshTriggered') @StorageProp('themeVersion') themeVersion: number = 0;
+  @State themeRefreshKey: number = 0;
   @Link aliasName: string;
+  @Watch('onRefreshTriggered') @StorageProp('languageVersion') languageVersion: number = 0;
+  
+  onRefreshTriggered() {
+    this.themeRefreshKey = this.themeVersion + this.languageVersion;
+  }
   @Link isServerRunning: boolean;
   @Link localIps: string[];
   @Link quickSaveMode: number;
@@ -51,6 +58,9 @@ export struct ReceiveTab {
   @State pendingRequests: Map<string, FileRequestInfo> = new Map();
   
   private settingsService: SettingsService = SettingsService.getInstance();
+  private taskUpdateListener = (tasks: TransferTask[]) => {
+    this.receiveTasks = tasks.filter(t => t.direction === TransferDirection.Receive);
+  };
 
   aboutToAppear() {
     // 注册文件请求回调
@@ -58,10 +68,12 @@ export struct ReceiveTab {
       this.handleFileRequest(requestJson);
     });
 
-    // 定期更新任务列表
-    setInterval(() => {
-      this.updateTasks();
-    }, 500);
+    // 注册任务更新监听器
+    fileTransferManager.onUpdate(this.taskUpdateListener);
+  }
+
+  aboutToDisappear() {
+    fileTransferManager.offUpdate(this.taskUpdateListener);
   }
 
   private handleFileRequest(requestJson: string) {
@@ -153,11 +165,9 @@ export struct ReceiveTab {
       Row() {
         // 历史记录按钮
         Button({ type: ButtonType.Circle }) {
-          Path()
-            .width(36)
-            .height(36)
-            .commands('M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.11L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.25 2.52.77-1.28-3.52-2.09V8z')
-            .fill(gc('text_secondary'))
+          SymbolGlyph($r('sys.symbol.clock'))
+            .fontSize(24)
+            .fontColor([gc('text_secondary')])
         }
         .width(56)
         .height(56)
@@ -169,11 +179,9 @@ export struct ReceiveTab {
 
         // 信息按钮
         Button({ type: ButtonType.Circle }) {
-          Path()
-            .width(36)
-            .height(36)
-            .commands('M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z')
-            .fill(gc('text_secondary'))
+          SymbolGlyph($r('sys.symbol.info_circle'))
+            .fontSize(24)
+            .fontColor([gc('text_secondary')])
         }
         .width(56)
         .height(56)
@@ -182,7 +190,7 @@ export struct ReceiveTab {
           this.showAdvancedInfo = !this.showAdvancedInfo;
         })
       }
-      .margin({ top: 40, right: 16 })
+      .margin({ top: 20, right: 16 })
       .zIndex(1)
 
       Scroll() {
@@ -190,26 +198,29 @@ export struct ReceiveTab {
           // Logo & 雷达部分
           Column() {
             Stack() {
-              // 背景扩散环
-              ForEach([1, 2, 3], (i: number) => {
-                Circle()
-                  .width(120 + (this.animationAngle % 360 / 3.6) * i)
-                  .height(120 + (this.animationAngle % 360 / 3.6) * i)
-                  .fill(gc('transparent'))
-                  .stroke(i === 1 ? gc('accent') : gc('accent'))
-                  .strokeWidth(2)
-                  .opacity(Math.max(0, 1 - (this.animationAngle % 360 / 360) * (i / 1.5)))
-              })
+              // 背景扩散环 (雷达波纹)
+              if (this.isServerRunning) {
+                ForEach([0, 1, 2], (i: number) => {
+                  Circle()
+                    .width(140 + ((this.animationAngle + i * 120) % 360) / 360 * 200)
+                    .height(140 + ((this.animationAngle + i * 120) % 360) / 360 * 200)
+                    .fill(Color.Transparent)
+                    .stroke(gc('accent'))
+                    .strokeWidth(2)
+                    .opacity(Math.max(0, 1 - ((this.animationAngle + i * 120) % 360) / 360))
+                })
+              }
 
               Image($r('app.media.app_icon'))
                 .width(140)
                 .height(140)
                 .borderRadius(28)
+                .shadow({ radius: 20, color: '#40000000', offsetY: 10 })
             }
-            .width(240)
-            .height(240)
+            .width(340)
+            .height(340)
             .alignContent(Alignment.Center)
-            .margin({ top: 80, bottom: 40 })
+            .margin({ top: 40, bottom: 20 })
             
             Text(this.aliasName)
               .fontSize(28)
@@ -299,7 +310,7 @@ export struct ReceiveTab {
                 .backgroundColor(gc('bg_secondary'))
                 .borderRadius(12)
                 .margin({ bottom: 12 })
-              })
+              }, (entry: [string, FileRequestInfo]) => entry[0])
             }
             .width('90%')
             .margin({ top: 20 })
@@ -392,7 +403,7 @@ export struct ReceiveTab {
             .padding(2)
           }
           .width('80%')
-          .margin({ top: 32, bottom: 40 })
+          .margin({ top: 20, bottom: 40 })
         }
         .width('100%')
       }

@@ -41,7 +41,18 @@ interface StringMap {
   theme_system: string;
   theme_light: string;
   theme_dark: string;
+  theme_black: string;
+  color_title: string;
+  color_blue: string;
+  color_green: string;
+  color_yellow: string;
+  color_orange: string;
+  color_red: string;
+  color_pink: string;
+  color_purple: string;
+  color_teal: string;
   language_title: string;
+  language_system: string;
   animation_title: string;
   general_settings: string;
   network_settings: string;
@@ -55,6 +66,17 @@ interface StringMap {
   about_title: string;
   app_name: string;
   copy_right: string;
+  privacy_policy: string;
+  third_party: string;
+  // 帮助页面
+  app_intro_title: string;
+  app_intro_content: string;
+  how_to_send_title: string;
+  how_to_send_content: string;
+  how_to_receive_title: string;
+  how_to_receive_content: string;
+  notes_title: string;
+  notes_content: string;
 }
 
 interface LanguageStrings {
@@ -106,7 +128,18 @@ export class I18nManager {
       theme_system: '跟随系统',
       theme_light: '浅色模式',
       theme_dark: '深色模式',
+      theme_black: '纯黑模式',
+      color_title: '主题色',
+      color_blue: '蓝色',
+      color_green: '绿色',
+      color_yellow: '黄色',
+      color_orange: '橙色',
+      color_red: '红色',
+      color_pink: '粉色',
+      color_purple: '紫色',
+      color_teal: '青色',
       language_title: '语言',
+      language_system: '跟随系统',
       animation_title: '动画',
       general_settings: '常规',
       network_settings: '网络',
@@ -119,7 +152,18 @@ export class I18nManager {
       input_port: '请输入端口号 (1024-65535)',
       about_title: '关于',
       app_name: '糖葫芦投送',
-      copy_right: '© 2024 糖葫芦团队'
+      copy_right: '© 2026 铭研信息',
+      privacy_policy: '隐私政策',
+      third_party: '第三方组件',
+      // 帮助页面
+      app_intro_title: '应用介绍',
+      app_intro_content: '糖葫芦投送是一款跨平台的文件传输应用，支持在局域网内的设备之间快速传输文件、图片、视频和文本内容。无需互联网连接，保护您的隐私安全。',
+      how_to_send_title: '如何发送文件',
+      how_to_send_content: '1. 在发送页面选择要发送的文件类型（文件、媒体或文本）\n2. 选择要发送的具体文件或输入文本内容\n3. 等待扫描发现附近的设备\n4. 点击目标设备旁边的"发送"按钮\n5. 等待传输完成',
+      how_to_receive_title: '如何接收文件',
+      how_to_receive_content: '1. 确保接收功能已开启（接收页面顶部开关）\n2. 当有设备发送文件时，会收到接收请求\n3. 选择"接收"或"拒绝"\n4. 接收的文件会保存到设置的保存目录中',
+      notes_title: '注意事项',
+      notes_content: '• 所有设备需要连接到同一个局域网（WiFi）\n• 确保设备之间的网络可以互相访问\n• 大文件传输可能需要较长时间，请耐心等待\n• 如遇问题，请检查网络连接和防火墙设置'
     },
     en: {
       tab_receive: 'Receive',
@@ -163,7 +207,18 @@ export class I18nManager {
       theme_system: 'System',
       theme_light: 'Light',
       theme_dark: 'Dark',
+      theme_black: 'Black',
+      color_title: 'Accent Color',
+      color_blue: 'Blue',
+      color_green: 'Green',
+      color_yellow: 'Yellow',
+      color_orange: 'Orange',
+      color_red: 'Red',
+      color_pink: 'Pink',
+      color_purple: 'Purple',
+      color_teal: 'Teal',
       language_title: 'Language',
+      language_system: 'System',
       animation_title: 'Animation',
       general_settings: 'General',
       network_settings: 'Network',
@@ -176,7 +231,18 @@ export class I18nManager {
       input_port: 'Enter port (1024-65535)',
       about_title: 'About',
       app_name: 'LocalSend',
-      copy_right: '© 2024 LocalSend Team'
+      copy_right: '© 2026 Mingyan Info',
+      privacy_policy: 'Privacy Policy',
+      third_party: 'Third Party',
+      // 帮助页面
+      app_intro_title: 'App Introduction',
+      app_intro_content: 'LocalSend is a cross-platform file transfer app that allows fast transfer of files, images, videos, and text between devices on the same local network. No internet connection required, protecting your privacy.',
+      how_to_send_title: 'How to Send Files',
+      how_to_send_content: '1. On the Send page, select the file type (File, Media, or Text)\n2. Choose specific files or enter text content\n3. Wait for nearby devices to be discovered\n4. Click the "Send" button next to the target device\n5. Wait for the transfer to complete',
+      how_to_receive_title: 'How to Receive Files',
+      how_to_receive_content: '1. Ensure receiving is enabled (toggle on the Receive page)\n2. When a device sends files, you will receive a request\n3. Choose "Accept" or "Reject"\n4. Received files will be saved to the configured directory',
+      notes_title: 'Notes',
+      notes_content: '• All devices must be connected to the same local network (WiFi)\n• Ensure devices can communicate with each other on the network\n• Large files may take longer to transfer, please be patient\n• If issues occur, check network connection and firewall settings'
     }
   };
 
@@ -264,8 +330,30 @@ export class I18nManager {
         return langMap.theme_light;
       case 'theme_dark':
         return langMap.theme_dark;
+      case 'theme_black':
+        return langMap.theme_black;
+      case 'color_title':
+        return langMap.color_title;
+      case 'color_blue':
+        return langMap.color_blue;
+      case 'color_green':
+        return langMap.color_green;
+      case 'color_yellow':
+        return langMap.color_yellow;
+      case 'color_orange':
+        return langMap.color_orange;
+      case 'color_red':
+        return langMap.color_red;
+      case 'color_pink':
+        return langMap.color_pink;
+      case 'color_purple':
+        return langMap.color_purple;
+      case 'color_teal':
+        return langMap.color_teal;
       case 'language_title':
         return langMap.language_title;
+      case 'language_system':
+        return langMap.language_system;
       case 'animation_title':
         return langMap.animation_title;
       case 'general_settings':
@@ -292,6 +380,26 @@ export class I18nManager {
         return langMap.app_name;
       case 'copy_right':
         return langMap.copy_right;
+      case 'privacy_policy':
+        return langMap.privacy_policy;
+      case 'third_party':
+        return langMap.third_party;
+      case 'app_intro_title':
+        return langMap.app_intro_title;
+      case 'app_intro_content':
+        return langMap.app_intro_content;
+      case 'how_to_send_title':
+        return langMap.how_to_send_title;
+      case 'how_to_send_content':
+        return langMap.how_to_send_content;
+      case 'how_to_receive_title':
+        return langMap.how_to_receive_title;
+      case 'how_to_receive_content':
+        return langMap.how_to_receive_content;
+      case 'notes_title':
+        return langMap.notes_title;
+      case 'notes_content':
+        return langMap.notes_content;
       default:
         return '';
     }
@@ -302,6 +410,19 @@ export class I18nManager {
     const langMap = lang === 'en' ? I18nManager.strings.en : I18nManager.strings.zh;
     const value = I18nManager.getStringValue(langMap, key);
     return value || I18nManager.getStringValue(I18nManager.strings.zh, key) || key;
+  }
+
+  // 增加语言版本号，触发 UI 刷新
+  static incrementLanguageVersion(): void {
+    const current = AppStorage.get<number>('languageVersion') || 0;
+    AppStorage.setOrCreate('languageVersion', current + 1);
+  }
+
+  // 初始化
+  static init(): void {
+    if (!AppStorage.has('languageVersion')) {
+      AppStorage.setOrCreate('languageVersion', 0);
+    }
   }
 }
 

@@ -23,6 +23,7 @@ add_library(entry SHARED
 target_link_libraries(entry 
     PUBLIC 
     libace_napi.z.so
+    libhilog_ndk.z.so
 )
 
 # ============================================================================

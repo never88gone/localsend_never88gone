@@ -5,7 +5,8 @@ import promptAction from '@ohos.promptAction';
 import router from '@ohos.router';
 import { fileTransferManager, TransferTask, TransferState, TransferDirection } from '../service/FileTransferManager';
 import { localSendService, Device, FileInfo, DeviceType } from '../service/LocalSendService';
-import { gc } from '../utils/ThemeManager';
+import { SettingsService } from '../services/SettingsService';
+import { gc, ThemeManager } from '../utils/ThemeManager';
 import { t } from '../utils/I18nManager';
 
 // 文件信息接口
@@ -19,13 +20,62 @@ interface SelectedFile {
 export struct SendTab {
   @StorageProp('appTheme') currentTheme: string = 'system';
   @StorageProp('appLanguage') currentLanguage: string = 'system';
+  @Watch('onRefreshTriggered') @StorageProp('themeVersion') themeVersion: number = 0;
+  @Watch('onRefreshTriggered') @StorageProp('languageVersion') languageVersion: number = 0;
+  @State refreshKey: number = 0;
   @Link devices: Device[];
+  
+  onRefreshTriggered() {
+    this.refreshKey++;
+  }
   @State selectedFilesCount: number = 0;
   @State selectedFiles: SelectedFile[] = [];
   @State isScanning: boolean = false;
   
   @State showTextInputSheet: boolean = false;
   @State textToSend: string = '';
+
+  // 根据设备模型获取设备图标
+  private getDeviceIcon(deviceModel: string): Resource {
+    const model = deviceModel.toLowerCase();
+    // 手机设备 - 使用手机图标
+    if (model.includes('iphone') || model.includes('ipad') || model.includes('ios') ||
+        model.includes('android') || model.includes('harmony') || model.includes('harmonyos')) {
+      return $r('sys.symbol.phone');
+    }
+    // 桌面设备 - 使用显示器图标
+    if (model.includes('windows') || model.includes('mac') || model.includes('macos') || model.includes('linux')) {
+      return $r('sys.symbol.display');
+    }
+    // TV 设备 - 使用显示器图标
+    if (model.includes('tv')) {
+      return $r('sys.symbol.display');
+    }
+    // 默认设备图标
+    return $r('sys.symbol.display');
+  }
+
+  // 根据设备模型获取设备类型名称
+  private getDeviceTypeName(deviceModel: string): string {
+    const model = deviceModel.toLowerCase();
+    if (model.includes('iphone') || model.includes('ipad') || model.includes('ios')) {
+      return 'iOS';
+    } else if (model.includes('android')) {
+      return 'Android';
+    } else if (model.includes('harmony') || model.includes('harmonyos')) {
+      return 'HarmonyOS';
+    } else if (model.includes('windows')) {
+      return 'Windows';
+    } else if (model.includes('mac') || model.includes('macos')) {
+      return 'macOS';
+    } else if (model.includes('linux')) {
+      return 'Linux';
+    } else if (model.includes('tv')) {
+      return 'TV';
+    } else {
+      return deviceModel || 'Unknown';
+    }
+  }
 
   aboutToAppear() {
   }
@@ -142,11 +192,9 @@ export struct SendTab {
           Blank()
           
           Button({ type: ButtonType.Circle }) {
-            Path()
-              .width(36)
-              .height(36)
-              .commands('M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.11L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.25 2.52.77-1.28-3.52-2.09V8z')
-              .fill(gc('text_primary'))
+            SymbolGlyph($r('sys.symbol.clock'))
+              .fontSize(24)
+              .fontColor([gc('text_primary')])
           }
           .width(56)
           .height(56)
@@ -156,13 +204,11 @@ export struct SendTab {
           })
         }
         .width('100%')
-        .padding({ left: 32, right: 32, top: 48, bottom: 20 })
+        .padding({ left: 32, right: 32, top: 20, bottom: 20 })
 
         // 选择部分
         Column() {
           Row() {
-            Text('选择')
-              .fontSize(18)
             Text(this.selectedFilesCount > 0 ? `${t('select_files')} (${this.selectedFilesCount})` : t('select_files'))
               .fontSize(20)
               .fontWeight(FontWeight.Medium)
@@ -185,10 +231,9 @@ export struct SendTab {
           .padding({ left: 20, right: 20, top: 10, bottom: 10 })
           
           Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
-            this.CategoryButton(t('file'), 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z', (): void => { this.selectFiles(); })
-            this.CategoryButton(t('media'), 'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z', (): void => { this.selectMedia(); })
-            this.CategoryButton(t('text'), 'M14 17H4v2h10v-2zm6-8H4v2h16V9zM4 15h16v-2H4v2zM4 5v2h16V5H4z', (): void => { this.showTextInputSheet = true; })
-            this.CategoryButton(t('app'), 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z', (): void => { promptAction.showToast({ message: '请使用文件选择器发送 APK' }); this.selectFiles(); })
+            this.CategoryButton(t('file'), $r('sys.symbol.doc'), (): void => { this.selectFiles(); })
+            this.CategoryButton(t('media'), $r('sys.symbol.camera'), (): void => { this.selectMedia(); })
+            this.CategoryButton(t('text'), $r('sys.symbol.textformat'), (): void => { this.showTextInputSheet = true; })
           }
           .padding({ left: 15, right: 15 })
 
@@ -197,11 +242,9 @@ export struct SendTab {
             Column() {
               ForEach(this.selectedFiles, (file: SelectedFile, index: number) => {
                 Row() {
-                  Path()
-                    .width(20)
-                    .height(20)
-                    .commands('M14,2 L6,2 C4.9,2 4,2.9 4,4 L4,20 C4,21.1 4.9,22 6,22 L18,22 C19.1,22 20,21.1 20,20 L20,8 L14,2 Z')
-                    .fill(gc('accent'))
+                  SymbolGlyph($r('sys.symbol.doc'))
+                    .fontSize(20)
+                    .fontColor([gc('accent')])
                   
                   Text(file.name || 'unknown')
                     .fontSize(14)
@@ -240,11 +283,9 @@ export struct SendTab {
           
           // 扫描按钮
           Button({ type: ButtonType.Circle }) {
-            Path()
-              .width(36)
-              .height(36)
-              .commands('M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z')
-              .fill(this.isScanning ? gc('accent') : gc('text_tertiary'))
+            SymbolGlyph($r('sys.symbol.arrow_clockwise'))
+              .fontSize(24)
+              .fontColor([this.isScanning ? gc('accent') : gc('text_tertiary')])
           }
           .width(56)
           .height(56)
@@ -268,11 +309,9 @@ export struct SendTab {
           if (this.devices.length === 0) {
             ListItem() {
               Column() {
-                Path()
-                  .width(64)
-                  .height(64)
-                  .commands('M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z')
-                  .fill(gc('divider'))
+                SymbolGlyph($r('sys.symbol.exclamationmark_circle'))
+                  .fontSize(64)
+                  .fontColor([gc('divider')])
                 Text(t('no_devices'))
                   .fontSize(16)
                   .fontColor(gc('text_tertiary'))
@@ -291,11 +330,9 @@ export struct SendTab {
             ListItem() {
               Row() {
                 Column() {
-                  Path()
-                    .width(40)
-                    .height(40)
-                    .commands('M20 18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h6v2H8v2h8v-2h-2v-2h6zm-16-2V6h16v10H4z')
-                    .fill(gc('accent'))
+                  SymbolGlyph(this.getDeviceIcon(device.deviceModel))
+                    .fontSize(40)
+                    .fontColor([gc('accent')])
                 }
                 .width(64)
                 .height(64)
@@ -308,7 +345,7 @@ export struct SendTab {
                   Text(device.alias)
                     .fontSize(18)
                     .fontWeight(FontWeight.Medium)
-                  Text(`${device.deviceModel || 'Unknown'} • ${device.ip}`)
+                  Text(`${this.getDeviceTypeName(device.deviceModel)} • ${device.ip || 'Unknown'}`)
                     .fontSize(12)
                     .fontColor(Color.Gray)
                     .margin({ top: 4 })
@@ -316,6 +353,9 @@ export struct SendTab {
                 .alignItems(HorizontalAlign.Start)
                 
                 Blank()
+
+                // 收藏按钮
+                FavoriteButton({ fingerprint: device.fingerprint })
                 
                 if (this.selectedFilesCount > 0) {
                   Button('发送')
@@ -324,14 +364,10 @@ export struct SendTab {
                     .backgroundColor('#007DFF')
                     .borderRadius(8)
                     .height(36)
+                    .margin({ left: 12 })
                     .onClick(() => {
                       this.sendToDevice(device);
                     })
-                } else {
-                  Image($r('app.media.startIcon'))
-                    .width(28)
-                    .height(28)
-                    .opacity(0.3)
                 }
               }
               .width('100%')
@@ -350,10 +386,13 @@ export struct SendTab {
         .width('100%')
         .layoutWeight(1)
 
-        Text('帮助')
-          .fontSize(12)
-          .fontColor(Color.Gray)
+        Text(t('help'))
+          .fontSize(14)
+          .fontColor(gc('accent'))
           .margin({ bottom: 40, top: 20 })
+          .onClick(() => {
+            router.pushUrl({ url: 'pages/HelpPage' });
+          })
       }
       .width('100%')
     }
@@ -366,30 +405,15 @@ export struct SendTab {
       backgroundColor: gc('bg_secondary'),
       dragBar: true
     })
+    .key(`send_tab_scroll_${this.refreshKey}`)
   }
 
-  @Builder CategoryButton(label: string, svgPath: string, onClick: () => void) {
-    Column() {
-      Path()
-        .width(48)
-        .height(48)
-        .commands(svgPath)
-        .fill(gc('accent'))
-        .margin({ bottom: 12 })
-      Text(label)
-        .fontSize(18)
-        .fontColor(gc('text_primary'))
-    }
-    .width('48%')
-    .height(120)
-    .backgroundColor(gc('bg_secondary'))
-    .borderRadius(16)
-    .margin({ bottom: 12 })
-    .justifyContent(FlexAlign.Center)
-    .onClick(onClick)
+  @Builder CategoryButton(label: string, iconResource: Resource, onClick: () => void) {
+    CategoryButtonComponent({ label: label, iconResource: iconResource, onButtonClick: onClick })
   }
 
   @Builder TextInputSheet() {
+// ...
     Column() {
       Text(t('send_text_title'))
         .fontSize(18)
@@ -437,13 +461,11 @@ export struct SendTab {
     .padding(16)
   }
 
-  @Builder SelectionButton(label: string, svgPath: string) {
+  @Builder SelectionButton(label: string, iconResource: Resource) {
     Column() {
-      Path()
-        .width(48)
-        .height(48)
-        .commands(svgPath)
-        .fill('#007DFF')
+      SymbolGlyph(iconResource)
+        .fontSize(48)
+        .fontColor(['#007DFF'])
         .margin({ bottom: 12 })
       Text(label)
         .fontSize(18)
@@ -466,5 +488,74 @@ export struct SendTab {
         this.selectFiles();
       }
     })
+  }
+}
+
+/**
+ * 收藏按钮组件
+ */
+@Component
+struct FavoriteButton {
+  @Prop fingerprint: string;
+  @State isFav: boolean = false;
+  private settingsService = SettingsService.getInstance();
+
+  async aboutToAppear() {
+    this.isFav = await this.settingsService.isFavorite(this.fingerprint);
+  }
+
+  build() {
+    Button({ type: ButtonType.Circle }) {
+      SymbolGlyph(this.isFav ? $r('sys.symbol.star_fill') : $r('sys.symbol.star'))
+        .fontSize(24)
+        .fontColor([this.isFav ? gc('accent') : gc('text_tertiary')])
+    }
+    .width(44)
+    .height(44)
+    .backgroundColor(gc('transparent'))
+    .onClick(async (event: ClickEvent) => {
+      // 阻止冒泡到 ListItem 点击
+      this.isFav = !this.isFav;
+      await this.settingsService.toggleFavorite(this.fingerprint);
+    })
+  }
+}
+
+@Component
+struct CategoryButtonComponent {
+  @Prop label: string;
+  @Prop iconResource: Resource;
+  onButtonClick: () => void = () => {};
+  @State scaleVal: number = 1.0;
+
+  build() {
+    Column() {
+      SymbolGlyph(this.iconResource)
+        .fontSize(36)
+        .fontColor([gc('accent')])
+        .margin({ bottom: 8 })
+      Text(this.label)
+        .fontSize(16)
+        .fontColor(gc('text_primary'))
+    }
+    .width('48%')
+    .height(90)
+    .backgroundColor(gc('bg_secondary'))
+    .borderRadius(16)
+    .margin({ bottom: 12 })
+    .justifyContent(FlexAlign.Center)
+    .scale({ x: this.scaleVal, y: this.scaleVal })
+    .animation({
+      duration: 200,
+      curve: Curve.EaseInOut
+    })
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.scaleVal = 0.92;
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.scaleVal = 1.0;
+      }
+    })
+    .onClick(this.onButtonClick)
   }
 }

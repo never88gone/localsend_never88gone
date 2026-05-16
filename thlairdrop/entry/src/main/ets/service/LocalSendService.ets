@@ -57,11 +57,25 @@ export interface FileInfo {
 }
 
 /**
+ * 接收到的请求信息
+ */
+export interface FileRequestInfo {
+  id: string;
+  senderIp: string;
+  senderAlias: string;
+  fingerprint?: string;
+  fileCount: number;
+  totalSize: number;
+  files: FileInfo[]; // 增加详细文件列表
+}
+
+/**
  * 发送请求
  */
 export interface SendRequest {
   files: FileInfo[];
   requestId?: string;
+  senderAlias?: string;
 }
 
 /**
@@ -131,7 +145,9 @@ export class LocalSendService {
    */
   isRunning(): boolean {
     try {
-      return native.isServerRunning();
+      const running = native.isServerRunning();
+      this._isRunning = running; // 同步状态
+      return running;
     } catch {
       return this._isRunning;
     }
@@ -316,6 +332,14 @@ export class LocalSendService {
     } catch (error) {
       console.error('[LocalSend] Failed to set file callback:', error);
     }
+  }
+
+  /**
+   * 设置进度回调
+   */
+  setProgressCallback(callback: (id: string, progress: number) => void): void {
+    // TODO: 需要在 native 模块中实现 setProgressCallback
+    console.warn('[LocalSend] setProgressCallback not implemented in native module');
   }
 
   /**

@@ -5,6 +5,7 @@
  */
 
 import { TransferTask, TransferState, TransferDirection } from '../service/FileTransferManager';
+import { FileInfo } from '../service/LocalSendService';
 import promptAction from '@ohos.promptAction';
 import { gc } from '../utils/ThemeManager';
 import { t } from '../utils/I18nManager';
@@ -13,7 +14,16 @@ import { t } from '../utils/I18nManager';
 export struct TransferProgressCard {
   @StorageProp('appTheme') currentTheme: string = 'system';
   @StorageProp('appLanguage') currentLanguage: string = 'system';
+  @Watch('onRefreshTriggered') @StorageProp('themeVersion') themeVersion: number = 0;
+  @Watch('onRefreshTriggered') @StorageProp('languageVersion') languageVersion: number = 0;
+  @State refreshKey: number = 0;
+  
+  onRefreshTriggered() {
+    this.refreshKey++;
+  }
+
   @Prop task: TransferTask;
+  @State isExpanded: boolean = false;
   onCancel?: (taskId: string) => void;
   onRetry?: (taskId: string) => void;
 
@@ -23,22 +33,18 @@ export struct TransferProgressCard {
       Row() {
         // 方向图标
         if (this.task.direction === TransferDirection.Send) {
-          Path()
-            .width(20)
-            .height(20)
-            .commands('M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z')
-            .fill(gc('accent'))
+          SymbolGlyph($r('sys.symbol.paperplane_fill'))
+            .fontSize(20)
+            .fontColor([gc('accent')])
         } else {
-          Path()
-            .width(20)
-            .height(20)
-            .commands('M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z')
-            .fill(gc('success'))
+          SymbolGlyph($r('sys.symbol.arrow_down_circle'))
+            .fontSize(20)
+            .fontColor([gc('success')])
         }
 
         Text(this.task.direction === TransferDirection.Send ? t('tab_send') : t('tab_receive'))
           .fontSize(14)
-          .fontWeight(FontWeight.Medium)
+          .fontWeight(FontWeight.Bold)
           .fontColor(gc('text_primary'))
           .margin({ left: 8 })
 
@@ -52,6 +58,11 @@ export struct TransferProgressCard {
 
       // 设备信息
       Row() {
+        SymbolGlyph($r('sys.symbol.display'))
+          .fontSize(16)
+          .fontColor([gc('text_secondary')])
+          .margin({ right: 6 })
+
         Text(this.task.device.alias || 'Unknown')
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
@@ -59,13 +70,13 @@ export struct TransferProgressCard {
         
         Text(`(${this.task.device.ip})`)
           .fontSize(12)
-          .fontColor(gc('text_secondary'))
+          .fontColor(gc('text_tertiary'))
           .margin({ left: 8 })
       }
       .width('100%')
       .margin({ bottom: 8 })
 
-      // 文件数量和大小
+      // 文件数量和大小 (点击可展开)
       Row() {
         Text(`${this.task.files.length} ${t('file')}`)
           .fontSize(14)
@@ -77,82 +88,148 @@ export struct TransferProgressCard {
         Text(this.formatSize(this.task.totalSize))
           .fontSize(14)
           .fontColor(gc('text_secondary'))
+
+        Blank()
+
+        if (this.task.files.length > 0) {
+          SymbolGlyph(this.isExpanded ? $r('sys.symbol.chevron_up') : $r('sys.symbol.chevron_down'))
+            .fontSize(16)
+            .fontColor([gc('text_tertiary')])
+        }
       }
       .width('100%')
       .margin({ bottom: 12 })
+      .onClick(() => {
+        if (this.task.files.length > 0) {
+          this.isExpanded = !this.isExpanded;
+        }
+      })
 
-      // 进度条
+      // 展开的文件列表
+      if (this.isExpanded && this.task.files.length > 0) {
+        Column() {
+          ForEach(this.task.files, (file: FileInfo) => {
+            Row() {
+              SymbolGlyph($r('sys.symbol.doc'))
+                .fontSize(14)
+                .fontColor([gc('text_tertiary')])
+                .margin({ right: 8 })
+              
+              Text(file.fileName)
+                .fontSize(13)
+                .fontColor(gc('text_primary'))
+                .layoutWeight(1)
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+              
+              Text(this.formatSize(file.size))
+                .fontSize(12)
+                .fontColor(gc('text_tertiary'))
+            }
+            .width('100%')
+            .margin({ bottom: 6 })
+          })
+        }
+        .width('100%')
+        .padding({ left: 8, right: 8, top: 8, bottom: 4 })
+        .margin({ bottom: 12 })
+        .backgroundColor(gc('bg_primary'))
+        .borderRadius(8)
+      }
+
+      // 进度条 (高级渐变样式)
       if (this.task.state === TransferState.InProgress || 
           this.task.state === TransferState.Pending) {
         Column() {
-          Progress({ value: this.task.progress, total: 100, type: ProgressType.Linear })
-            .width('100%')
-            .color(this.getProgressColor())
+          Stack({ alignContent: Alignment.Start }) {
+            // 背景轨道
+            Rect()
+              .width('100%')
+              .height(10)
+              .fill(gc('accent_bg'))
+              .borderRadius(5)
+            
+            // 进度填充 (渐变效果)
+            Rect()
+              .width(`${this.task.progress}%`)
+              .height(10)
+              .fill(gc('accent'))
+              .borderRadius(5)
+              .animation({ duration: 300, curve: Curve.Smooth })
+              .shadow({ radius: 4, color: '#40000000', offsetY: 2 })
+          }
+          .width('100%')
           
           Row() {
-            Text(`${this.task.progress.toFixed(1)}%`)
+            Text(`${this.task.progress.toFixed(0)}%`)
               .fontSize(12)
-              .fontColor(gc('text_secondary'))
+              .fontWeight(FontWeight.Bold)
+              .fontColor(gc('accent'))
             
             Blank()
             
             Text(`${this.formatSize(this.task.transferredSize)} / ${this.formatSize(this.task.totalSize)}`)
               .fontSize(12)
-              .fontColor(gc('text_secondary'))
+              .fontColor(gc('text_tertiary'))
           }
           .width('100%')
-          .margin({ top: 4 })
+          .margin({ top: 6 })
         }
         .width('100%')
-        .margin({ bottom: 12 })
+        .margin({ bottom: 16 })
       }
 
-      // 错误信息
+      // 错误或取消信息
       if (this.task.state === TransferState.Failed) {
         Row() {
-          Path()
-            .width(16)
-            .height(16)
-            .commands('M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z')
-            .fill(gc('error'))
+          SymbolGlyph($r('sys.symbol.exclamationmark_circle_fill'))
+            .fontSize(16)
+            .fontColor([gc('error')])
           
-          Text(t('failed'))
+          Text(this.task.errorMessage || t('failed'))
             .fontSize(12)
             .fontColor(gc('error'))
-            .margin({ left: 4 })
+            .margin({ left: 6 })
         }
         .width('100%')
         .margin({ bottom: 12 })
+        .padding(8)
+        .backgroundColor(gc('error_bg'))
+        .borderRadius(6)
       }
 
       // 操作按钮
       Row() {
-        if (this.task.state === TransferState.InProgress) {
+        if (this.task.state === TransferState.InProgress || this.task.state === TransferState.Pending) {
           Button(t('cancel'))
-            .fontSize(14)
+            .fontSize(13)
+            .height(32)
             .fontColor(gc('error'))
-            .backgroundColor(gc('error_bg'))
-            .borderRadius(8)
+            .backgroundColor(gc('transparent'))
+            .border({ width: 1, color: gc('error') })
+            .borderRadius(16)
             .onClick(() => {
               this.onCancel?.(this.task.id);
             })
         } else if (this.task.state === TransferState.Failed) {
           Button(t('retry'))
-            .fontSize(14)
+            .fontSize(13)
+            .height(32)
             .fontColor(gc('accent'))
             .backgroundColor(gc('accent_bg'))
-            .borderRadius(8)
+            .borderRadius(16)
             .onClick(() => {
               this.onRetry?.(this.task.id);
             })
         } else if (this.task.state === TransferState.Completed) {
           Button(t('view'))
-            .fontSize(14)
+            .fontSize(13)
+            .height(32)
             .fontColor(gc('success'))
             .backgroundColor(gc('success_bg'))
-            .borderRadius(8)
+            .borderRadius(16)
             .onClick(() => {
-              promptAction.showToast({ message: '功能开发中' });
+              promptAction.showToast({ message: '文件已保存到相册或下载目录' });
             })
         }
       }
@@ -162,49 +239,55 @@ export struct TransferProgressCard {
     .width('100%')
     .padding(16)
     .backgroundColor(gc('bg_secondary'))
-    .borderRadius(12)
-    .shadow({ radius: 4, color: '#0A000000', offsetY: 2 })
+    .borderRadius(16)
+    .shadow({ radius: 10, color: '#15000000', offsetY: 4 })
+    .key(`transfer_card_${this.refreshKey}`)
   }
 
   @Builder StateLabel() {
     Row() {
       if (this.task.state === TransferState.Pending) {
         Text(t('waiting'))
-          .fontSize(12)
+          .fontSize(11)
           .fontColor(gc('warning'))
-          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+          .padding({ left: 8, right: 8, top: 2, bottom: 2 })
           .backgroundColor(gc('warning_bg'))
-          .borderRadius(4)
+          .borderRadius(10)
+          .transition({ type: TransitionType.Insert, opacity: 0, scale: { x: 0.8, y: 0.8 } })
       } else if (this.task.state === TransferState.InProgress) {
         Text(t('in_progress'))
-          .fontSize(12)
+          .fontSize(11)
           .fontColor(gc('accent'))
-          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+          .padding({ left: 8, right: 8, top: 2, bottom: 2 })
           .backgroundColor(gc('accent_bg'))
-          .borderRadius(4)
+          .borderRadius(10)
       } else if (this.task.state === TransferState.Completed) {
         Text(t('completed'))
-          .fontSize(12)
+          .fontSize(11)
           .fontColor(gc('success'))
-          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+          .padding({ left: 8, right: 8, top: 2, bottom: 2 })
           .backgroundColor(gc('success_bg'))
-          .borderRadius(4)
+          .borderRadius(10)
+          .transition({ type: TransitionType.Insert, opacity: 0, scale: { x: 0.8, y: 0.8 } })
       } else if (this.task.state === TransferState.Failed) {
         Text(t('failed'))
-          .fontSize(12)
+          .fontSize(11)
           .fontColor(gc('error'))
-          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+          .padding({ left: 8, right: 8, top: 2, bottom: 2 })
           .backgroundColor(gc('error_bg'))
-          .borderRadius(4)
+          .borderRadius(10)
+          .transition({ type: TransitionType.Insert, opacity: 0, scale: { x: 0.8, y: 0.8 } })
       } else if (this.task.state === TransferState.Cancelled) {
         Text(t('cancelled'))
-          .fontSize(12)
+          .fontSize(11)
           .fontColor(gc('text_secondary'))
-          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+          .padding({ left: 8, right: 8, top: 2, bottom: 2 })
           .backgroundColor(gc('divider'))
-          .borderRadius(4)
+          .borderRadius(10)
+          .transition({ type: TransitionType.Insert, opacity: 0, scale: { x: 0.8, y: 0.8 } })
       }
     }
+    .animation({ duration: 300, curve: Curve.EaseOut })
   }
 
   private getProgressColor(): ResourceColor {
@@ -235,11 +318,9 @@ export struct TransferList {
     Column() {
       if (this.tasks.length === 0) {
         Column() {
-          Path()
-            .width(48)
-            .height(48)
-            .commands('M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z')
-            .fill('#CCCCCC')
+          SymbolGlyph($r('sys.symbol.inbox'))
+            .fontSize(48)
+            .fontColor(['#CCCCCC'])
           
           Text('暂无传输任务')
             .fontSize(14)

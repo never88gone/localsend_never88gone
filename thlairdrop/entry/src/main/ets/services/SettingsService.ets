@@ -13,11 +13,12 @@ export interface AppSettings {
   port: number;
   encryptionEnabled: boolean;
   aliasName: string;
+  favorites: string[]; // 收藏设备的指纹列表
 }
 
 // 默认设置
 const DEFAULT_SETTINGS: AppSettings = {
-  theme: 'system',
+  theme: 'light',
   colorTheme: 'blue',
   language: 'zh',
   animationEnabled: true,
@@ -25,7 +26,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   saveDir: '下载',
   port: 53317,
   encryptionEnabled: true,
-  aliasName: 'HarmonyOS 设备'
+  aliasName: 'HarmonyOS 设备',
+  favorites: []
 };
 
 // 主题变更回调类型
@@ -66,6 +68,10 @@ export class SettingsService {
       hilog.error(0x0000, 'SettingsService', `Failed to init preferences: ${JSON.stringify(e)}`);
     }
   }
+
+  getContext(): common.UIAbilityContext | null {
+    return this.context;
+  }
   
   // 设置回调
   setThemeChangeCallback(callback: ThemeChangeCallback): void {
@@ -96,6 +102,7 @@ export class SettingsService {
       const port = await this.prefs.get('port', DEFAULT_SETTINGS.port) as number;
       const encryptionEnabled = await this.prefs.get('encryptionEnabled', DEFAULT_SETTINGS.encryptionEnabled) as boolean;
       const aliasName = await this.prefs.get('aliasName', DEFAULT_SETTINGS.aliasName) as string;
+      const favoritesJson = await this.prefs.get('favorites', '[]') as string;
       
       const settings: AppSettings = {
         theme: theme,
@@ -106,13 +113,36 @@ export class SettingsService {
         saveDir: saveDir,
         port: port,
         encryptionEnabled: encryptionEnabled,
-        aliasName: aliasName
+        aliasName: aliasName,
+        favorites: JSON.parse(favoritesJson) as string[]
       };
       return settings;
     } catch (e) {
       hilog.error(0x0000, 'SettingsService', `Failed to get settings: ${JSON.stringify(e)}`);
       return DEFAULT_SETTINGS;
     }
+  }
+
+  /**
+   * 切换收藏状态
+   */
+  async toggleFavorite(fingerprint: string): Promise<boolean> {
+    const settings = await this.getSettings();
+    const index = settings.favorites.indexOf(fingerprint);
+    if (index === -1) {
+      settings.favorites.push(fingerprint);
+    } else {
+      settings.favorites.splice(index, 1);
+    }
+    return await this.saveSetting('favorites', JSON.stringify(settings.favorites));
+  }
+
+  /**
+   * 是否已收藏
+   */
+  async isFavorite(fingerprint: string): Promise<boolean> {
+    const settings = await this.getSettings();
+    return settings.favorites.indexOf(fingerprint) !== -1;
   }
   
   // 保存主题
@@ -147,6 +177,10 @@ export class SettingsService {
   
   // 保存端口
   async setPort(port: number): Promise<boolean> {
+    if (port < 1024 || port > 65535) {
+      hilog.error(0x0000, 'SettingsService', `Invalid port: ${port}`);
+      return false;
+    }
     return await this.saveSetting('port', port);
   }
   
@@ -157,7 +191,11 @@ export class SettingsService {
   
   // 保存别名
   async setAliasName(alias: string): Promise<boolean> {
-    return await this.saveSetting('aliasName', alias);
+    if (!alias || alias.trim().length === 0) {
+      hilog.error(0x0000, 'SettingsService', 'Invalid alias: alias cannot be empty');
+      return false;
+    }
+    return await this.saveSetting('aliasName', alias.trim());
   }
   
   // 通用保存设置

@@ -4,7 +4,11 @@
  * 管理文件传输状态、进度和回调
  */
 
-import { localSendService, Device, FileInfo, SendRequest } from './LocalSendService';
+import { localSendService, Device, FileInfo, SendRequest, DeviceType, FileRequestInfo } from './LocalSendService';
+import { historyService, HistoryRecord } from '../services/HistoryService';
+import { SettingsService } from '../services/SettingsService';
+import vibrator from '@ohos.vibrator';
+import fs from '@ohos.file.fs';
 
 /**
  * 传输状态
@@ -39,7 +43,10 @@ export interface TransferTask {
   progress: number;
   startTime: number;
   endTime?: number;
+  speed: number; // 字节/秒
+  eta: number;   // 剩余秒数
   saveDir?: string;
+  errorMessage?: string;
 }
 
 /**
@@ -59,10 +66,67 @@ export class FileTransferManager {
   private static instance: FileTransferManager | null = null;
   private tasks: Map<string, TransferTask> = new Map();
   private callbacks: Map<string, TransferCallback> = new Map();
-  private progressTimer: number = -1;
+  private listeners: ((tasks: TransferTask[]) => void)[] = [];
+  private pollingIntervalId: number | null = null;
 
   private constructor() {
-    this.startProgressMonitor();
+    this.initCallbacks();
+  }
+
+  /**
+   * 注册任务更新监听器
+   */
+  public onUpdate(listener: (tasks: TransferTask[]) => void): void {
+    this.listeners.push(listener);
+    // 立即通知一次当前状态
+    listener(this.getAllTasks());
+  }
+
+  /**
+   * 移除监听器
+   */
+  public offUpdate(listener: (tasks: TransferTask[]) => void): void {
+    const index = this.listeners.indexOf(listener);
+    if (index !== -1) {
+      this.listeners.splice(index, 1);
+    }
+  }
+
+  private notifyListeners(): void {
+    const allTasks = this.getAllTasks();
+    this.listeners.forEach(l => l(allTasks));
+  }
+
+  /**
+   * 初始化回调
+   */
+  private initCallbacks(): void {
+    // 注册 NAPI 进度回调
+    localSendService.setProgressCallback((id: string, progress: number) => {
+      this.updateProgress(id, progress);
+    });
+
+    // 注册 NAPI 文件请求回调
+    localSendService.setFileRequestCallback(async (json: string) => {
+      try {
+        const info = JSON.parse(json) as FileRequestInfo;
+        
+        // 创建任务（待处理状态）
+        this.createReceiveTaskFromInfo(info);
+
+        // 检查自动接受
+        const settings = await SettingsService.getInstance().getSettings();
+        const isFav = info.fingerprint ? settings.favorites.includes(info.fingerprint) : false;
+        
+        // 0: 关, 1: 收藏, 2: 总是
+        if (settings.quickSaveMode === 2 || (settings.quickSaveMode === 1 && isFav)) {
+          console.info(`[Transfer] Auto-accepting request from ${info.senderAlias}`);
+          this.acceptReceiveTask(info.id);
+        }
+      } catch (e) {
+        console.error('[Transfer] Failed to handle file request callback:', e);
+      }
+    });
   }
 
   /**
@@ -91,7 +155,9 @@ export class FileTransferManager {
       totalSize: totalSize,
       transferredSize: 0,
       progress: 0,
-      startTime: Date.now()
+      startTime: Date.now(),
+      speed: 0,
+      eta: 0
     };
 
     this.tasks.set(taskId, task);
@@ -114,13 +180,107 @@ export class FileTransferManager {
       transferredSize: 0,
       progress: 0,
       startTime: Date.now(),
-      saveDir: saveDir
+      saveDir: saveDir,
+      speed: 0,
+      eta: 0
     };
 
     this.tasks.set(requestId, task);
     return task;
   }
 
+  /**
+   * 从通知信息创建接收任务
+   */
+  private createReceiveTaskFromInfo(info: FileRequestInfo): void {
+    const task: TransferTask = {
+      id: info.id,
+      direction: TransferDirection.Receive,
+      state: TransferState.Pending,
+      progress: 0,
+      totalSize: info.totalSize,
+      transferredSize: 0,
+      startTime: Date.now(),
+      files: info.files || [], // 使用传输过来的详细文件列表
+      device: {
+        ip: info.senderIp,
+        alias: info.senderAlias,
+        port: 53317,
+        version: '1.0',
+        https: false,
+        fingerprint: info.fingerprint || '',
+        deviceModel: 'Unknown',
+        deviceType: DeviceType.Mobile,
+        download: false
+      },
+      speed: 0,
+      eta: 0
+    };
+    this.tasks.set(task.id, task);
+  }
+
+  /**
+   * 取消传输任务
+   */
+  cancelTask(taskId: string): void {
+    const task = this.tasks.get(taskId);
+    if (!task) return;
+
+    localSendService.cancelTransfer(taskId);
+    this.updateTaskState(task, TransferState.Failed, '已取消');
+  }
+
+  /**
+   * 接受接收任务
+   */
+  async acceptReceiveTask(taskId: string): Promise<boolean> {
+    const task = this.tasks.get(taskId);
+    if (!task || task.direction !== TransferDirection.Receive) return false;
+
+    const settings = await SettingsService.getInstance().getSettings();
+    const savePath = this.resolveSavePath(settings.saveDir);
+
+    try {
+      const success = localSendService.acceptRequest(taskId, savePath);
+      if (success) {
+        task.saveDir = savePath;
+        this.updateTaskState(task, TransferState.InProgress);
+        this.startPolling();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      this.updateTaskState(task, TransferState.Failed, String(e));
+      return false;
+    }
+  }
+
+  /**
+   * 解析保存路径标签为真实绝对路径
+   */
+  private resolveSavePath(label: string): string {
+    const context = SettingsService.getInstance().getContext();
+    if (!context) {
+      return '';
+    }
+
+    let subDir = 'Download';
+    if (label === '图片') subDir = 'Pictures';
+    else if (label === '文档') subDir = 'Documents';
+    
+    const baseDir = context.filesDir;
+    const fullPath = `${baseDir}/${subDir}`;
+    
+    try {
+      if (!fs.accessSync(fullPath)) {
+        fs.mkdirSync(fullPath);
+      }
+    } catch (e) {
+      console.error(`[Transfer] Failed to create directory ${fullPath}:`, e);
+    }
+    
+    return fullPath;
+  }
   /**
    * 启动发送任务
    */
@@ -140,17 +300,14 @@ export class FileTransferManager {
       );
 
       if (success) {
-        // 模拟进度更新（实际应该从 native 获取）
-        this.simulateProgress(task);
+        this.startPolling();
         return true;
       } else {
-        this.updateTaskState(task, TransferState.Failed);
+        this.updateTaskState(task, TransferState.Failed, '无法建立连接');
         return false;
       }
     } catch (error) {
-      this.updateTaskState(task, TransferState.Failed);
-      const callback = this.callbacks.get(taskId);
-      callback?.onError?.(task, String(error));
+      this.updateTaskState(task, TransferState.Failed, String(error));
       return false;
     }
   }
@@ -159,14 +316,6 @@ export class FileTransferManager {
    * 接收文件请求
    */
   async acceptReceive(requestId: string, saveDir: string): Promise<boolean> {
-    const task = this.tasks.get(requestId);
-    if (!task || task.direction !== TransferDirection.Receive) {
-      // 创建新任务
-      const pendingRequests = localSendService.getPendingRequests();
-      // 找到对应的请求
-      // 这里简化处理
-    }
-
     const success = localSendService.acceptRequest(requestId, saveDir);
     if (success) {
       const task = this.tasks.get(requestId);
@@ -248,19 +397,37 @@ export class FileTransferManager {
         this.callbacks.delete(id);
       }
     });
+    this.notifyListeners();
   }
 
   /**
    * 更新任务状态
    */
-  private updateTaskState(task: TransferTask, state: TransferState): void {
+  private updateTaskState(task: TransferTask, state: TransferState, error?: string): void {
     const oldState = task.state;
     task.state = state;
+    if (error) {
+      task.errorMessage = error;
+    }
 
     if (state === TransferState.Completed || 
         state === TransferState.Failed ||
         state === TransferState.Cancelled) {
       task.endTime = Date.now();
+      
+      // 保存到历史记录
+      this.saveToHistory(task);
+
+      // 触感反馈
+      try {
+        if (state === TransferState.Completed) {
+          vibrator.startVibration({ type: 'time', duration: 50 }, { id: 0, usage: 'alarm' });
+        } else if (state === TransferState.Failed) {
+          vibrator.startVibration({ type: 'time', duration: 200 }, { id: 0, usage: 'alarm' });
+        }
+      } catch (e) {
+        // 忽略不支持震动的设备
+      }
     }
 
     const callback = this.callbacks.get(task.id);
@@ -270,7 +437,31 @@ export class FileTransferManager {
 
     if (state === TransferState.Completed) {
       callback?.onComplete?.(task);
+    } else if (state === TransferState.Failed) {
+      callback?.onError?.(task, error || '未知错误');
     }
+
+    this.notifyListeners();
+  }
+
+  /**
+   * 保存到历史记录
+   */
+  private async saveToHistory(task: TransferTask): Promise<void> {
+    const record: HistoryRecord = {
+      id: task.id,
+      fileName: task.files.length > 0 ? task.files[0].fileName : 'Unknown',
+      size: task.totalSize,
+      time: task.endTime || Date.now(),
+      direction: task.direction === TransferDirection.Receive ? 'receive' : 'send',
+      deviceName: task.device ? task.device.alias : 'Unknown',
+      status: task.state === TransferState.Completed ? 'completed' : 'failed',
+      filePath: task.direction === TransferDirection.Receive && task.saveDir 
+        ? `${task.saveDir}/${task.files.length > 0 ? task.files[0].fileName : ''}`
+        : (task.files.length > 0 ? task.files[0].filePath : undefined)
+    };
+    
+    await historyService.addRecord(record);
   }
 
   /**
@@ -280,54 +471,64 @@ export class FileTransferManager {
     const task = this.tasks.get(taskId);
     if (!task) return;
 
+    // 处理取消状态 (101)
+    if (progress === 101) {
+      this.updateTaskState(task, TransferState.Cancelled);
+      return;
+    }
+
+    // 进度只增不减
+    if (progress <= task.progress && progress < 100) return;
+
     task.progress = progress;
     task.transferredSize = Math.floor(task.totalSize * progress / 100);
 
     const callback = this.callbacks.get(taskId);
     callback?.onProgress?.(task);
 
-    if (progress >= 100) {
+    if (progress >= 100 && task.state === TransferState.InProgress) {
       this.updateTaskState(task, TransferState.Completed);
+    } else {
+      this.notifyListeners();
     }
   }
 
   /**
-   * 启动进度监控
+   * 启动进度轮询
    */
-  private startProgressMonitor(): void {
-    // 每 500ms 检查一次进度
-    this.progressTimer = setInterval(() => {
-      this.tasks.forEach((task: TransferTask, id: string) => {
-        if (task.state === TransferState.InProgress && 
-            task.direction === TransferDirection.Receive) {
-          const progress = localSendService.getReceiveProgress(id);
-          if (progress >= 0 && progress !== task.progress) {
-            this.updateProgress(id, progress);
+  private startPolling(): void {
+    if (this.pollingIntervalId !== null) return;
+    
+    this.pollingIntervalId = setInterval(() => {
+      const activeTasks = this.getActiveTasks();
+      if (activeTasks.length === 0) {
+        this.stopPolling();
+        return;
+      }
+      
+      activeTasks.forEach(task => {
+        if (task.state === TransferState.InProgress) {
+          const progress = localSendService.getReceiveProgress(task.id);
+          if (progress >= 0 && progress <= 100) {
+            this.updateProgress(task.id, progress);
+          } else if (progress === -1) {
+            this.updateTaskState(task, TransferState.Failed, '传输过程中出错');
+          } else if (progress === 101) {
+            this.updateTaskState(task, TransferState.Cancelled);
           }
         }
       });
-    }, 500);
+    }, 500); // 每 500ms 轮询一次
   }
 
   /**
-   * 模拟进度（用于发送）
+   * 停止进度轮询
    */
-  private simulateProgress(task: TransferTask): void {
-    let progress = 0;
-    const interval = setInterval(() => {
-      if (task.state !== TransferState.InProgress) {
-        clearInterval(interval);
-        return;
-      }
-
-      progress += Math.random() * 10;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
-      }
-
-      this.updateProgress(task.id, progress);
-    }, 200);
+  private stopPolling(): void {
+    if (this.pollingIntervalId !== null) {
+      clearInterval(this.pollingIntervalId);
+      this.pollingIntervalId = null;
+    }
   }
 
   /**
@@ -341,10 +542,6 @@ export class FileTransferManager {
    * 销毁
    */
   destroy(): void {
-    if (this.progressTimer !== -1) {
-      clearInterval(this.progressTimer);
-      this.progressTimer = -1;
-    }
     this.tasks.clear();
     this.callbacks.clear();
   }
@@ -352,3 +549,4 @@ export class FileTransferManager {
 
 // 导出单例
 export const fileTransferManager = FileTransferManager.getInstance();
+

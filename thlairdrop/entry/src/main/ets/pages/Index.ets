@@ -8,8 +8,9 @@ import { SettingsTab } from '../components/SettingsTab';
 import libEntry from 'libentry.so';
 import { localSendService, Device } from '../service/LocalSendService';
 import { SettingsService } from '../services/SettingsService';
-import { gc } from '../utils/ThemeManager';
-import { t } from '../utils/I18nManager';
+import { historyService } from '../services/HistoryService';
+import { gc, ThemeManager } from '../utils/ThemeManager';
+import { I18nManager, t } from '../utils/I18nManager';
 
 @Entry
 @Component
@@ -31,6 +32,13 @@ struct Index {
   @StorageLink('appLanguage') appLanguage: string = 'zh';
   @StorageLink('appTheme') appTheme: string = 'light';
   @StorageLink('appColorTheme') appColorTheme: string = 'blue';
+  @Watch('onRefreshTriggered') @StorageLink('themeVersion') themeVersion: number = 0;
+  @Watch('onRefreshTriggered') @StorageLink('languageVersion') languageVersion: number = 0;
+  @State refreshKey: number = 0;
+  
+  onRefreshTriggered() {
+    this.refreshKey++;
+  }
   
   // 设置服务
   private settingsService: SettingsService = SettingsService.getInstance();
@@ -71,6 +79,7 @@ struct Index {
     hilog.info(0x0000, 'Index', 'Starting App');
     
     // 初始化应用
+    I18nManager.init();
     this.initApp();
     
     this.startAnimation();
@@ -86,7 +95,11 @@ struct Index {
   
   private async initApp() {
     // 初始化设置服务
-    await this.settingsService.init(getContext(this) as common.UIAbilityContext);
+    const context = getContext(this) as common.UIAbilityContext;
+    await this.settingsService.init(context);
+    
+    // 初始化历史服务
+    await historyService.init(context);
     
     // 加载保存的设置
     await this.loadSettings();
@@ -182,43 +195,23 @@ struct Index {
       // 图标
       if (title === 'tab_receive') {
         // 下载图标
-        Column() {
-          Path()
-            .width(36)
-            .height(36)
-            .commands('M12 16l-6-6h4V4h4v6h4l-6 6zm-8 4v-2h16v2H4z')
-            .fill(this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary'))
-        }
-        .width(64)
-        .height(36)
-        .justifyContent(FlexAlign.Center)
+        SymbolGlyph($r('sys.symbol.arrow_down_circle'))
+          .fontSize(28)
+          .fontColor([this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary')])
       } else if (title === 'tab_send') {
         // 上传图标
-        Column() {
-          Path()
-            .width(36)
-            .height(36)
-            .commands('M12 8l6 6h-4v6h-4v-6H6l6-6zm8-4v2H4V4h16z')
-            .fill(this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary'))
-        }
-        .width(64)
-        .height(36)
-        .justifyContent(FlexAlign.Center)
+        SymbolGlyph($r('sys.symbol.arrow_up_circle'))
+          .fontSize(28)
+          .fontColor([this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary')])
       } else {
         // 设置图标
-        Column() {
-          Path()
-            .width(36)
-            .height(36)
-            .commands('M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.44.17-.47.41l-.37 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.04.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.37-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.21.08-.47-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z')
-            .fill(this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary'))
-        }
-        .width(64)
-        .height(36)
-        .justifyContent(FlexAlign.Center)
+        SymbolGlyph($r('sys.symbol.gearshape'))
+          .fontSize(28)
+          .fontColor([this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary')])
       }
       
       Text(t(title))
+        .key(`tab_text_${this.refreshKey}`)
         .fontColor(this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary'))
         .fontSize(12)
     }

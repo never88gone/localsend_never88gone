@@ -1,10 +1,14 @@
 import promptAction from '@ohos.promptAction';
 import hilog from '@ohos.hilog';
 import common from '@ohos.app.ability.common';
+import router from '@ohos.router';
 import { SettingsService, AppSettings } from '../services/SettingsService';
 import { SelectPickerDialog, SelectOption } from './SelectPickerDialog';
-import { gc } from '../utils/ThemeManager';
-import { t } from '../utils/I18nManager';
+import { gc, ThemeManager } from '../utils/ThemeManager';
+import { I18nManager, t } from '../utils/I18nManager';
+
+// 获取全局上下文
+let context = getContext(this) as common.UIAbilityContext;
 
 // 设置项接口
 interface SettingsItem {
@@ -74,11 +78,13 @@ export struct SettingsTab {
   @State language: string = 'system';
   @State encryptionEnabled: boolean = true;
   @Link saveDir: string;
+  @Watch('onRefreshTriggered') @StorageProp('themeVersion') themeVersion: number = 0;
+  @Watch('onRefreshTriggered') @StorageProp('languageVersion') languageVersion: number = 0;
+  @State refreshKey: number = 0;
   
-  // 用于全局响应主题和语言的刷新
-  @StorageProp('appTheme') currentTheme: string = 'system';
-  @StorageProp('appColorTheme') currentColorTheme: string = 'blue';
-  @StorageProp('appLanguage') currentLanguage: string = 'system';
+  onRefreshTriggered() {
+    this.refreshKey++;
+  }
   
   // 弹窗状态
   @State showAliasDialog: boolean = false;
@@ -189,12 +195,16 @@ export struct SettingsTab {
   private applyTheme(theme: string): void {
     // 存储到全局状态，供其他组件使用
     AppStorage.setOrCreate('appTheme', theme);
+    // 触发主题版本更新，确保 UI 刷新
+    ThemeManager.incrementThemeVersion();
     hilog.info(0x0000, 'SettingsTab', `Theme applied: ${theme}`);
   }
 
   // 应用色彩
   private applyColorTheme(color: string): void {
     AppStorage.setOrCreate('appColorTheme', color);
+    // 触发主题版本更新，确保 UI 刷新
+    ThemeManager.incrementThemeVersion();
     hilog.info(0x0000, 'SettingsTab', `Color Theme applied: ${color}`);
   }
   
@@ -202,6 +212,8 @@ export struct SettingsTab {
   private applyLanguage(language: string): void {
     // 存储到全局状态，供其他组件使用
     AppStorage.setOrCreate('appLanguage', language);
+    // 触发语言版本更新，确保 UI 刷新
+    I18nManager.incrementLanguageVersion();
     hilog.info(0x0000, 'SettingsTab', `Language applied: ${language}`);
   }
   
@@ -255,24 +267,24 @@ export struct SettingsTab {
           .fontWeight(FontWeight.Bold)
           .fontColor(gc('text_primary'))
           .width('100%')
-          .padding({ left: 32, top: 48, bottom: 24 })
+          .padding({ left: 32, top: 20, bottom: 24 })
 
         this.SettingsSection(t('general_settings'), [
           { 
             label: t('theme_title'), 
-            value: getThemeOptions().find(o => o.value === this.theme)?.label || this.theme, 
+            value: getThemeOptions().find(o => o.value === this.theme)?.label || this.theme,
             key: 'theme',
             onClick: (): void => { this.themeDialogController.open(); }
           },
           { 
             label: t('color_title'), 
-            value: getColorOptions().find(o => o.value === this.colorTheme)?.label || this.colorTheme, 
-            key: 'colorTheme',
+            value: getColorOptions().find(o => o.value === this.colorTheme)?.label || this.colorTheme,
+            key: 'color',
             onClick: (): void => { this.colorThemeDialogController.open(); }
           },
           { 
             label: t('language_title'), 
-            value: getLanguageOptions().find(o => o.value === this.language)?.label || this.language, 
+            value: getLanguageOptions().find(o => o.value === this.language)?.label || this.language,
             key: 'lang',
             onClick: (): void => { this.languageDialogController.open(); }
           },
@@ -316,12 +328,27 @@ export struct SettingsTab {
           }
         ])
 
+        this.SettingsSection(t('about_title'), [
+          { 
+            label: t('privacy_policy'), 
+            value: '',
+            key: 'privacy',
+            onClick: (): void => this.openPrivacyPolicy()
+          },
+          { 
+            label: t('third_party'), 
+            value: '',
+            key: 'third',
+            onClick: (): void => { router.pushUrl({ url: 'pages/ThirdPartyLicenses' }); }
+          }
+        ])
+
         // 关于
         Column() {
           Image($r('app.media.app_icon'))
             .width(80).height(80)
             .borderRadius(16)
-            .margin({ top: 48, bottom: 12 })
+            .margin({ top: 20, bottom: 12 })
           Text(t('app_name'))
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
@@ -341,6 +368,7 @@ export struct SettingsTab {
       }
       .width('100%')
     }
+    .key(`settings_scroll_${this.refreshKey}`)
     .width('100%')
     .height('100%')
     .backgroundColor(gc('bg_primary'))
@@ -468,6 +496,16 @@ export struct SettingsTab {
     this.showPortDialog = true;
   }
 
+  // 打开隐私政策
+  private openPrivacyPolicy() {
+    // 使用系统浏览器打开隐私政策页面
+    const privacyUrl = 'https://github.com/never88gone/localsend_never88gone/blob/main/Privacy.md';
+    context.openLink(privacyUrl).catch((err: Error) => {
+      hilog.error(0x0000, 'SettingsTab', 'Failed to open privacy policy: ' + err.message);
+      promptAction.showToast({ message: '无法打开浏览器' });
+    });
+  }
+
   @Builder SettingsSection(title: string, items: SettingsItem[]) {
     Column() {
       Text(title)
@@ -516,13 +554,9 @@ export struct SettingsTab {
             .fontSize(14)
             .fontColor(gc('text_secondary'))
           // 右箭头图标
-          Path()
-            .width(12)
-            .height(20)
-            .commands('M2 2L10 10L2 18')
-            .stroke(gc('text_tertiary'))
-            .strokeWidth(2)
-            .fill(gc('transparent'))
+          SymbolGlyph($r('sys.symbol.chevron_right'))
+            .fontSize(16)
+            .fontColor([gc('text_tertiary')])
             .margin({ left: 8 })
         }
         .alignItems(VerticalAlign.Center)

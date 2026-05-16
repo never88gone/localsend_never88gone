@@ -1,66 +1,53 @@
 import router from '@ohos.router';
 import fs from '@ohos.file.fs';
-import { fileTransferManager, TransferTask, TransferState, TransferDirection } from '../service/FileTransferManager';
+import { fileTransferManager, TransferState, TransferDirection } from '../service/FileTransferManager';
+import { historyService, HistoryRecord } from '../services/HistoryService';
 import common from '@ohos.app.ability.common';
 import Want from '@ohos.app.ability.Want';
-import { gc } from '../utils/ThemeManager';
+import { gc, ThemeManager } from '../utils/ThemeManager';
 import { t } from '../utils/I18nManager';
-
-// 历史记录项
-interface HistoryItem {
-  id: string;
-  fileName: string;
-  size: number;
-  time: string;
-  direction: 'send' | 'receive';
-  deviceName: string;
-  status: 'completed' | 'failed';
-  filePath?: string;
-}
+import promptAction from '@ohos.promptAction';
 
 @Entry
 @Component
 struct TransferHistory {
   @StorageProp('appTheme') currentTheme: string = 'system';
   @StorageProp('appLanguage') currentLanguage: string = 'system';
+  @Watch('onRefreshTriggered') @StorageProp('themeVersion') themeVersion: number = 0;
+  @Watch('onRefreshTriggered') @StorageProp('languageVersion') languageVersion: number = 0;
+  @State refreshKey: number = 0;
   @State currentTab: number = 0; // 0: 接收, 1: 发送
-  @State receiveHistory: HistoryItem[] = [];
-  @State sendHistory: HistoryItem[] = [];
+  
+  onRefreshTriggered() {
+    this.refreshKey++;
+  }
+  @State receiveHistory: HistoryRecord[] = [];
+  @State sendHistory: HistoryRecord[] = [];
+  @State isLoading: boolean = true;
   
   aboutToAppear() {
     this.loadHistory();
   }
   
-  private loadHistory() {
-    // 从传输管理器获取历史记录
-    const allTasks = fileTransferManager.getAllTasks();
+  private async loadHistory() {
+    this.isLoading = true;
+    // 从持久化服务获取历史记录
+    const allRecords = await historyService.getAllRecords();
     
-    this.receiveHistory = allTasks
-      .filter(t => t.direction === TransferDirection.Receive)
-      .map(t => this.taskToHistory(t));
-    
-    this.sendHistory = allTasks
-      .filter(t => t.direction === TransferDirection.Send)
-      .map(t => this.taskToHistory(t));
-  }
-  
-  private taskToHistory(task: TransferTask): HistoryItem {
-    return {
-      id: task.id,
-      fileName: task.files.length > 0 ? task.files[0].fileName : 'Unknown',
-      size: task.totalSize,
-      time: this.formatTime(task.startTime),
-      direction: task.direction === TransferDirection.Receive ? 'receive' : 'send',
-      deviceName: task.device ? task.device.alias : 'Unknown',
-      status: task.state === TransferState.Completed ? 'completed' : 'failed',
-      filePath: task.direction === TransferDirection.Receive && task.saveDir 
-        ? `${task.saveDir}/${task.files.length > 0 ? task.files[0].fileName : ''}`
-        : (task.files.length > 0 ? task.files[0].filePath : undefined)
-    };
+    this.receiveHistory = allRecords.filter(r => r.direction === 'receive');
+    this.sendHistory = allRecords.filter(r => r.direction === 'send');
+    this.isLoading = false;
   }
   
   private formatTime(timestamp: number): string {
     const date = new Date(timestamp);
+    const now = new Date();
+    
+    // 如果是今天的记录，只显示时间
+    if (date.toDateString() === now.toDateString()) {
+      return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    }
+    
     return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
   }
   
@@ -72,8 +59,8 @@ struct TransferHistory {
   }
   
   // 打开文件
-  private openFile(item: HistoryItem) {
-    if (!item.filePath) {
+  private openFile(item: HistoryRecord) {
+    if (!item.filePath || item.status !== 'completed') {
       return;
     }
     try {
@@ -86,10 +73,17 @@ struct TransferHistory {
         console.info('Succeeded in starting ability for file view');
       }).catch((err: Error) => {
         console.error('Failed to start ability for file view:', err);
+        promptAction.showToast({ message: '无法打开文件，请检查是否安装了相关应用' });
       });
     } catch (e) {
       console.error('Failed to open file:', e);
     }
+  }
+
+  private async clearHistory() {
+    await historyService.clearAll();
+    this.loadHistory();
+    promptAction.showToast({ message: '历史记录已清除' });
   }
 
   build() {
@@ -98,11 +92,9 @@ struct TransferHistory {
       Row() {
         // 返回按钮
         Button({ type: ButtonType.Circle }) {
-          Path()
-            .width(24)
-            .height(24)
-            .commands('M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z')
-            .fill(gc('text_primary'))
+          SymbolGlyph($r('sys.symbol.chevron_left'))
+            .fontSize(24)
+            .fontColor([gc('text_primary')])
         }
         .width(44)
         .height(44)
@@ -118,8 +110,18 @@ struct TransferHistory {
           .layoutWeight(1)
           .textAlign(TextAlign.Center)
         
-        // 占位
-        Blank().width(44)
+        // 清除按钮
+        Button({ type: ButtonType.Circle }) {
+          SymbolGlyph($r('sys.symbol.trash'))
+            .fontSize(20)
+            .fontColor([gc('text_secondary')])
+        }
+        .width(44)
+        .height(44)
+        .backgroundColor(gc('transparent'))
+        .onClick(() => {
+          this.clearHistory();
+        })
       }
       .width('100%')
       .height(56)
@@ -133,6 +135,7 @@ struct TransferHistory {
           .fontWeight(this.currentTab === 0 ? FontWeight.Medium : FontWeight.Normal)
           .layoutWeight(1)
           .textAlign(TextAlign.Center)
+          .height('100%')
           .onClick(() => { this.currentTab = 0; })
         
         Divider()
@@ -146,6 +149,7 @@ struct TransferHistory {
           .fontWeight(this.currentTab === 1 ? FontWeight.Medium : FontWeight.Normal)
           .layoutWeight(1)
           .textAlign(TextAlign.Center)
+          .height('100%')
           .onClick(() => { this.currentTab = 1; })
       }
       .width('90%')
@@ -153,52 +157,62 @@ struct TransferHistory {
       .backgroundColor(gc('bg_secondary'))
       .borderRadius(24)
       .margin({ top: 16 })
+      .padding(4)
       
       // 列表
-      if (this.currentTab === 0) {
-        this.HistoryList(this.receiveHistory)
+      if (this.isLoading) {
+        Column() {
+          LoadingProgress()
+            .width(60)
+            .height(60)
+            .color(gc('accent'))
+        }
+        .width('100%')
+        .layoutWeight(1)
+        .justifyContent(FlexAlign.Center)
       } else {
-        this.HistoryList(this.sendHistory)
+        if (this.currentTab === 0) {
+          this.HistoryList(this.receiveHistory)
+        } else {
+          this.HistoryList(this.sendHistory)
+        }
       }
     }
     .width('100%')
     .height('100%')
     .backgroundColor(gc('bg_primary'))
+    .key(`history_column_${this.refreshKey}`)
   }
   
-  @Builder HistoryList(items: HistoryItem[]) {
+  @Builder HistoryList(items: HistoryRecord[]) {
     if (items.length === 0) {
       Column() {
         // 空状态图标
-        Path()
-          .width(64)
-          .height(64)
-          .commands('M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z')
-          .fill(gc('divider'))
+        SymbolGlyph($r('sys.symbol.folder'))
+          .fontSize(72)
+          .fontColor([gc('divider')])
         
         Text(t('empty_history'))
           .fontSize(16)
           .fontColor(gc('text_tertiary'))
-          .margin({ top: 16 })
+          .margin({ top: 20 })
       }
       .width('100%')
       .layoutWeight(1)
       .justifyContent(FlexAlign.Center)
     } else {
       List({ space: 12 }) {
-        ForEach(items, (item: HistoryItem) => {
+        ForEach(items, (item: HistoryRecord) => {
           ListItem() {
             Row() {
               // 文件图标
               Column() {
-                Path()
-                  .width(36)
-                  .height(36)
-                  .commands('M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z')
-                  .fill(item.direction === 'receive' ? gc('success') : gc('accent'))
+                SymbolGlyph($r('sys.symbol.doc'))
+                  .fontSize(32)
+                  .fontColor([item.direction === 'receive' ? gc('success') : gc('accent')])
               }
-              .width(56)
-              .height(56)
+              .width(52)
+              .height(52)
               .borderRadius(12)
               .backgroundColor(item.direction === 'receive' ? gc('success_bg') : gc('accent_bg'))
               .justifyContent(FlexAlign.Center)
@@ -231,31 +245,36 @@ struct TransferHistory {
               .layoutWeight(1)
               
               Column() {
-                Text(item.time)
-                  .fontSize(12)
+                Text(this.formatTime(item.time))
+                  .fontSize(11)
                   .fontColor(gc('text_secondary'))
                 
                 Text(item.status === 'completed' ? t('completed') : t('failed'))
-                  .fontSize(12)
+                  .fontSize(11)
                   .fontColor(item.status === 'completed' ? gc('success') : gc('error'))
                   .margin({ top: 4 })
+                  .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+                  .backgroundColor(item.status === 'completed' ? gc('success_bg') : gc('error_bg'))
+                  .borderRadius(4)
               }
               .alignItems(HorizontalAlign.End)
             }
             .width('100%')
-            .padding(16)
+            .padding(14)
             .backgroundColor(gc('bg_secondary'))
-            .borderRadius(12)
+            .borderRadius(16)
             .onClick(() => {
               this.openFile(item);
             })
           }
-        })
+        }, (item: HistoryRecord) => item.id)
       }
-      .width('90%')
+      .width('95%')
       .layoutWeight(1)
       .margin({ top: 16 })
       .padding({ bottom: 20 })
+      .scrollBar(BarState.Off)
     }
   }
 }
+

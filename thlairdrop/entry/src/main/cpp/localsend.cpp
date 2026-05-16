@@ -1,18 +1,171 @@
-/**
- * LocalSend HarmonyOS NAPI Module
- * 
- * This module provides the bridge between ArkTS and Rust.
- * Architecture: ArkTS -> NAPI (C++) -> FFI (Rust)
- */
-
 #include "napi/native_api.h"
 #include "localsend_rust.h"
 #include <string>
 #include <cstring>
+#include <uv.h>
+
+// ============================================================================
+// 全局回调句柄
+// ============================================================================
+
+static napi_threadsafe_function g_file_callback_fn = nullptr;
+static napi_threadsafe_function g_device_callback_fn = nullptr;
+
+/**
+ * 线程安全函数的回调处理 (JS 线程执行)
+ */
+static void CallJsCallback(napi_env env, napi_value js_cb, void* context, void* data) {
+    (void)context;
+    char* json_data = static_cast<char*>(data);
+    
+    napi_value args[1];
+    napi_create_string_utf8(env, json_data, NAPI_AUTO_LENGTH, &args[0]);
+    
+    napi_value undefined;
+    napi_get_undefined(env, &undefined);
+    
+    napi_value result;
+    napi_call_function(env, undefined, js_cb, 1, args, &result);
+    
+    // 释放由 C++ 线程分配的字符串
+    free(json_data);
+}
+
+/**
+ * C 层触发的回调代理 (工作线程执行)
+ */
+static void OnNativeFileRequest(const char* request_json) {
+    if (g_file_callback_fn) {
+        char* data = strdup(request_json);
+        napi_call_threadsafe_function(g_file_callback_fn, data, napi_tsfn_blocking);
+    }
+}
+
+static void OnNativeDeviceDiscovered(const char* device_json) {
+    if (g_device_callback_fn) {
+        char* data = strdup(device_json);
+        napi_call_threadsafe_function(g_device_callback_fn, data, napi_tsfn_blocking);
+    }
+}
+
+static void OnNativeProgress(const char* request_id, int32_t progress) {
+    if (g_file_callback_fn) { // 这里复用了文件回调的线程安全函数，或者新建一个
+        // 最好新建一个，但为了简化先合并
+    }
+}
+
+/**
+ * 专门处理进度的回调处理
+ */
+static void CallProgressJsCallback(napi_env env, napi_value js_cb, void* context, void* data) {
+    (void)context;
+    // 进度数据通常较小，我们可以直接传结构体，但为了统一还是传字符串或由 data 转换
+    struct ProgressData {
+        char id[128];
+        int32_t progress;
+    };
+    ProgressData* pdata = static_cast<ProgressData*>(data);
+    
+    napi_value args[2];
+    napi_create_string_utf8(env, pdata->id, NAPI_AUTO_LENGTH, &args[0]);
+    napi_create_int32(env, pdata->progress, &args[1]);
+    
+    napi_value undefined;
+    napi_get_undefined(env, &undefined);
+    
+    napi_value result;
+    napi_call_function(env, undefined, js_cb, 2, args, &result);
+    
+    delete pdata;
+}
+
+static napi_threadsafe_function g_progress_callback_fn = nullptr;
+
+static void OnNativeProgressReal(const char* request_id, int32_t progress) {
+    if (g_progress_callback_fn) {
+        struct ProgressData {
+            char id[128];
+            int32_t progress;
+        };
+        ProgressData* data = new ProgressData();
+        strncpy(data->id, request_id, 127);
+        data->progress = progress;
+        napi_call_threadsafe_function(g_progress_callback_fn, data, napi_tsfn_blocking);
+    }
+}
+
+/**
+ * 设置进度回调
+ */
+static napi_value SetProgressCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    napi_value work_name;
+    napi_create_string_utf8(env, "ProgressCallback", NAPI_AUTO_LENGTH, &work_name);
+
+    if (g_progress_callback_fn) {
+        napi_release_threadsafe_function(g_progress_callback_fn, napi_tsfn_release);
+    }
+
+    napi_create_threadsafe_function(env, args[0], nullptr, work_name, 0, 1, nullptr, nullptr, nullptr, CallProgressJsCallback, &g_progress_callback_fn);
+    
+    // 注册给底层 C++
+    localsend_set_progress_callback(OnNativeProgressReal);
+
+    return nullptr;
+}
 
 // ============================================================================
 // NAPI 函数实现
 // ============================================================================
+
+/**
+ * 设置文件请求回调
+ */
+static napi_value SetFileCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    napi_value work_name;
+    napi_create_string_utf8(env, "FileRequestCallback", NAPI_AUTO_LENGTH, &work_name);
+
+    if (g_file_callback_fn) {
+        napi_release_threadsafe_function(g_file_callback_fn, napi_tsfn_release);
+    }
+
+    napi_create_threadsafe_function(env, args[0], nullptr, work_name, 0, 1, nullptr, nullptr, nullptr, CallJsCallback, &g_file_callback_fn);
+    
+    // 注册给底层 C++
+    localsend_set_file_callback(OnNativeFileRequest);
+
+    return nullptr;
+}
+
+/**
+ * 设置设备发现回调
+ */
+static napi_value SetDeviceCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    napi_value work_name;
+    napi_create_string_utf8(env, "DeviceDiscoveryCallback", NAPI_AUTO_LENGTH, &work_name);
+
+    if (g_device_callback_fn) {
+        napi_release_threadsafe_function(g_device_callback_fn, napi_tsfn_release);
+    }
+
+    napi_create_threadsafe_function(env, args[0], nullptr, work_name, 0, 1, nullptr, nullptr, nullptr, CallJsCallback, &g_device_callback_fn);
+    
+    // 注册给底层 C++
+    localsend_set_device_callback(OnNativeDeviceDiscovered);
+
+    return nullptr;
+}
 
 /**
  * 启动 LocalSend 服务器
@@ -297,6 +450,7 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"sendAnnouncement", nullptr, SendAnnouncement, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getDeviceCount", nullptr, GetDeviceCount, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getRegisteredDevices", nullptr, GetRegisteredDevices, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setDeviceCallback", nullptr, SetDeviceCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         
         // 网络信息
         {"getLocalNetworkInfo", nullptr, GetLocalNetworkInfo, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -310,6 +464,8 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"rejectRequest", nullptr, RejectRequest, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getReceiveProgress", nullptr, GetReceiveProgress, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"cancelTransfer", nullptr, CancelTransfer, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setFileCallback", nullptr, SetFileCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setProgressCallback", nullptr, SetProgressCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     return exports;

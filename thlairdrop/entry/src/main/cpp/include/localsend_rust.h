@@ -120,11 +120,17 @@ typedef void (*LocalsendDeviceCallback)(const char* device_json);
 /// 文件接收回调函数类型
 typedef void (*LocalsendFileCallback)(const char* request_json);
 
+/// 传输进度回调函数类型
+typedef void (*LocalsendProgressCallback)(const char* request_id, int32_t progress);
+
 /// 注册设备发现回调
 void localsend_set_device_callback(LocalsendDeviceCallback callback);
 
 /// 注册文件接收回调
 void localsend_set_file_callback(LocalsendFileCallback callback);
+
+/// 注册进度回调
+void localsend_set_progress_callback(LocalsendProgressCallback callback);
 
 // ============================================================================
 // 测试函数
