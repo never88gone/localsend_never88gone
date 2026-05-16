@@ -1,218 +1,92 @@
-import hilog from '@ohos.hilog';
-import common from '@ohos.app.ability.common';
-import wifiManager from '@ohos.wifiManager';
-
-import { ReceiveTab } from '../components/ReceiveTab';
-import { SendTab } from '../components/SendTab';
-import { SettingsTab } from '../components/SettingsTab';
-import libEntry from 'libentry.so';
-import { localSendService, Device } from '../service/LocalSendService';
-import { SettingsService } from '../services/SettingsService';
-import { historyService } from '../services/HistoryService';
 import { gc, ThemeManager } from '../utils/ThemeManager';
-import { I18nManager, t } from '../utils/I18nManager';
+import { t } from '../utils/I18nManager';
+import { SendTab } from '../components/SendTab';
+import { ReceiveTab } from '../components/ReceiveTab';
+import { SettingsTab } from '../components/SettingsTab';
+import { localSendService, Device, NetworkInfo } from '../service/LocalSendService';
+import common from '@ohos.app.ability.common';
 
 @Entry
 @Component
 struct Index {
   @State currentIndex: number = 0;
-  @State discoveredDevices: Device[] = [];
+  @State devices: Device[] = [];
+  @State isScanning: boolean = false;
   
-  // 核心状态
-  @Watch('onAliasChanged') @State aliasName: string = 'HarmonyOS 设备';
-  @Watch('onServerStatusChanged') @State isServerRunning: boolean = true;
-  @State localIps: string[] = ['127.0.0.1'];
-  @State quickSaveMode: number = 0;
-  @State showAdvancedInfo: boolean = false;
+  // 共享状态
+  @StorageLink('appAliasName') aliasName: string = 'HarmonyOS Device';
+  @StorageLink('appQuickSaveMode') quickSaveMode: number = 0;
+  @StorageLink('appAnimationEnabled') animationEnabled: boolean = true;
+  @StorageLink('appPort') port: number = 53317;
+  @StorageLink('appSaveDir') saveDir: string = '下载';
+  @StorageLink('appIsServerRunning') isServerRunning: boolean = true;
+  @StorageLink('appLocalIps') localIps: string[] = [];
+  
+  // 动画角度
   @State animationAngle: number = 0;
-  @State animationEnabled: boolean = true;
-  @State port: number = 53317;
-  @State saveDir: string = '下载';
   
-  @StorageLink('appLanguage') appLanguage: string = 'zh';
-  @StorageLink('appTheme') appTheme: string = 'light';
-  @StorageLink('appColorTheme') appColorTheme: string = 'blue';
-  @Watch('onRefreshTriggered') @StorageLink('themeVersion') themeVersion: number = 0;
-  @Watch('onRefreshTriggered') @StorageLink('languageVersion') languageVersion: number = 0;
+  // 响应式触发器
+  @Watch('onRefreshTriggered') @StorageProp('themeVersion') themeVersion: number = 0;
+  @Watch('onRefreshTriggered') @StorageProp('languageVersion') languageVersion: number = 0;
   @State refreshKey: number = 0;
   
   onRefreshTriggered() {
     this.refreshKey++;
   }
   
-  // 设置服务
-  private settingsService: SettingsService = SettingsService.getInstance();
-  private isSettingsLoaded: boolean = false;
-  
-  onServerStatusChanged() {
-    if (!this.isSettingsLoaded) return;
-    hilog.info(0x0000, 'Index', 'Server status changed to: ' + this.isServerRunning);
-    try {
-      if (this.isServerRunning) {
-        libEntry.startServer(this.aliasName, this.port);
-      } else {
-        libEntry.stopServer();
-      }
-    } catch (e) {
-      hilog.error(0x0000, 'Index', 'Failed to toggle server status');
-    }
-  }
-  
-  onAliasChanged() {
-    if (!this.isSettingsLoaded) return;
-    hilog.info(0x0000, 'Index', 'Alias changed to: ' + this.aliasName);
-    // 保存别名到设置
-    this.settingsService.setAliasName(this.aliasName);
-    try {
-      libEntry.stopServer();
-      libEntry.startServer(this.aliasName, this.port);
-    } catch (e) {
-      hilog.error(0x0000, 'Index', 'Failed to restart server on alias change');
-    }
-  }
-  
-  private tabsController: TabsController = new TabsController();
-  private timerId: number = -1;
-  private scanIntervalId: number = -1;
+  // 显示高级信息
+  @State showAdvancedInfo: boolean = false;
+
+  private context = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear() {
-    hilog.info(0x0000, 'Index', 'Starting App');
-    
-    // 初始化应用
-    I18nManager.init();
-    this.initApp();
-    
-    this.startAnimation();
-    this.updateLocalIps();
-
-    // 定时扫描设备
-    this.scanIntervalId = setInterval(() => {
-      if (this.currentIndex === 1) {
-        this.scanDevices();
+    // 注册设备发现回调 (解析 JSON 字符串)
+    localSendService.setDeviceCallback((deviceJson: string) => {
+      try {
+        const devices = JSON.parse(deviceJson) as Device[];
+        this.devices = devices;
+      } catch (e) {
+        console.error('Failed to parse device JSON:', e);
       }
-    }, 3000);
-  }
-  
-  private async initApp() {
-    // 初始化设置服务
-    const context = getContext(this) as common.UIAbilityContext;
-    await this.settingsService.init(context);
-    
-    // 初始化历史服务
-    await historyService.init(context);
-    
-    // 加载保存的设置
-    await this.loadSettings();
-  }
-  
-  // 加载设置
-  private async loadSettings(): Promise<void> {
-    try {
-      const settings = await this.settingsService.getSettings();
-      this.aliasName = settings.aliasName;
-      this.quickSaveMode = settings.quickSaveMode;
-      this.animationEnabled = settings.animationEnabled;
-      this.port = settings.port;
-      this.saveDir = settings.saveDir;
-      
-      // 全局应用主题和语言
-      AppStorage.setOrCreate('appTheme', settings.theme);
-      AppStorage.setOrCreate('appLanguage', settings.language);
-      AppStorage.setOrCreate('appColorTheme', settings.colorTheme);
-      
-      this.isSettingsLoaded = true;
-      
-      // 设置加载完成后启动服务器
-      this.isServerRunning = libEntry.startServer(this.aliasName, this.port);
-      hilog.info(0x0000, 'Index', 'Settings loaded, server started: ' + this.isServerRunning);
-    } catch (err) {
-      const error = err as Error;
-      hilog.error(0x0000, 'Index', 'Failed to load settings: ' + error.message);
-      this.isSettingsLoaded = true;
-      // 使用默认设置启动服务器
-      this.isServerRunning = libEntry.startServer(this.aliasName, this.port);
-    }
-  }
+    });
 
-  private scanDevices() {
-    try {
-      let devices = localSendService.scanDevices();
-      if (devices && devices.length > 0) {
-        this.discoveredDevices = devices;
+    // 启动动画定时器
+    setInterval(() => {
+      if (this.isServerRunning) {
+        this.animationAngle = (this.animationAngle + 2) % 360;
       }
-    } catch (e) {
-      hilog.error(0x0000, 'Index', 'Failed to scan devices: ' + JSON.stringify(e));
-    }
+    }, 30);
+
+    // 获取并定时更新本地网络信息
+    this.updateNetworkInfo();
+    setInterval(() => {
+      this.updateNetworkInfo();
+    }, 5000);
+
+    // 初始扫描
+    localSendService.scanDevices();
   }
 
-  // 更新本地 IP
-  updateLocalIps() {
-    try {
-      let ipInfo = wifiManager.getIpInfo();
-      if (ipInfo && ipInfo.ipAddress) {
-        let ip = ipInfo.ipAddress;
-        let ipString = `${(ip) & 0xFF}.${(ip >> 8) & 0xFF}.${(ip >> 16) & 0xFF}.${(ip >>> 24) & 0xFF}`;
-        if (!this.localIps.includes(ipString)) {
-          this.localIps.push(ipString);
-        }
+  private updateNetworkInfo() {
+    const info = localSendService.getNetworkInfo();
+    if (info && info.ip) {
+      // 本地 IP 可能有多个，这里简单处理，实际可根据 native 返回解析
+      if (!this.localIps.includes(info.ip)) {
+        this.localIps = [info.ip];
       }
-    } catch (e) {
-      hilog.error(0x0000, 'Index', 'Failed to get IP from wifiManager: ' + JSON.stringify(e));
     }
   }
 
-  aboutToDisappear() {
-    this.stopAnimation();
-    if (this.scanIntervalId !== -1) {
-      clearInterval(this.scanIntervalId);
-    }
-    try {
-      libEntry.stopServer();
-    } catch (e) {
-      hilog.error(0x0000, 'Index', 'Failed to stop server');
-    }
-  }
-
-  startAnimation() {
-    if (this.timerId === -1) {
-      this.timerId = setInterval(() => {
-        if (this.animationEnabled && this.isServerRunning && this.currentIndex === 0) {
-          this.animationAngle = (this.animationAngle + 2) % 360;
-        }
-      }, 50);
-    }
-  }
-
-  stopAnimation() {
-    if (this.timerId !== -1) {
-      clearInterval(this.timerId);
-      this.timerId = -1;
-    }
-  }
-
-  @Builder TabBuilder(title: string, targetIndex: number) {
+  @Builder TabBuilder(title: string, targetIndex: number, selectedIcon: Resource, normalIcon: Resource) {
     Column() {
-      // 图标
-      if (title === 'tab_receive') {
-        // 下载图标
-        SymbolGlyph($r('sys.symbol.arrow_down_circle'))
-          .fontSize(28)
-          .fontColor([this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary')])
-      } else if (title === 'tab_send') {
-        // 上传图标
-        SymbolGlyph($r('sys.symbol.arrow_up_circle'))
-          .fontSize(28)
-          .fontColor([this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary')])
-      } else {
-        // 设置图标
-        SymbolGlyph($r('sys.symbol.gearshape'))
-          .fontSize(28)
-          .fontColor([this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary')])
-      }
+      SymbolGlyph(this.currentIndex === targetIndex ? selectedIcon : normalIcon)
+        .fontSize(24)
+        .fontColor([this.currentIndex === targetIndex ? gc('accent', this.themeVersion) : gc('text_tertiary', this.themeVersion)])
+        .margin({ bottom: 4 })
       
-      Text(t(title))
+      Text(t(title, this.languageVersion))
         .key(`tab_text_${this.refreshKey}`)
-        .fontColor(this.currentIndex === targetIndex ? gc('accent') : gc('text_tertiary'))
+        .fontColor(this.currentIndex === targetIndex ? gc('accent', this.themeVersion) : gc('text_tertiary', this.themeVersion))
         .fontSize(12)
     }
     .width('100%')
@@ -220,52 +94,52 @@ struct Index {
     .justifyContent(FlexAlign.Center)
     .onClick(() => {
       this.currentIndex = targetIndex;
-      this.tabsController.changeIndex(this.currentIndex);
     })
   }
 
   build() {
-    Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
-      TabContent() {
-        ReceiveTab({ 
-          aliasName: $aliasName, 
-          isServerRunning: $isServerRunning,
-          localIps: $localIps,
-          quickSaveMode: $quickSaveMode,
-          showAdvancedInfo: $showAdvancedInfo,
-          animationAngle: $animationAngle,
-          saveDir: $saveDir,
-          port: $port
-        })
-      }
-      .tabBar(this.TabBuilder('tab_receive', 0))
+    Column() {
+      // 内容区域
+      Tabs({ barPosition: BarPosition.End, index: this.currentIndex }) {
+        TabContent() {
+          ReceiveTab({
+            isServerRunning: $isServerRunning,
+            localIps: $localIps,
+            quickSaveMode: $quickSaveMode,
+            showAdvancedInfo: $showAdvancedInfo,
+            animationAngle: $animationAngle,
+            aliasName: $aliasName,
+            saveDir: $saveDir,
+            port: $port
+          })
+        }.tabBar(this.TabBuilder('tab_receive', 0, $r('sys.symbol.arrow_down_circle'), $r('sys.symbol.arrow_down_circle')))
 
-      TabContent() {
-        SendTab({ devices: $discoveredDevices })
-      }
-      .tabBar(this.TabBuilder('tab_send', 1))
+        TabContent() {
+          SendTab({
+            devices: $devices,
+            isScanning: this.isScanning
+          })
+        }.tabBar(this.TabBuilder('tab_send', 1, $r('sys.symbol.paperplane'), $r('sys.symbol.paperplane')))
 
-      TabContent() {
-        SettingsTab({
-          aliasName: $aliasName,
-          quickSaveMode: $quickSaveMode,
-          animationEnabled: $animationEnabled,
-          port: $port,
-          saveDir: $saveDir
-        })
+        TabContent() {
+          SettingsTab({
+            aliasName: $aliasName,
+            quickSaveMode: $quickSaveMode,
+            animationEnabled: $animationEnabled,
+            port: $port,
+            saveDir: $saveDir
+          })
+        }.tabBar(this.TabBuilder('tab_settings', 2, $r('sys.symbol.gearshape'), $r('sys.symbol.gearshape')))
       }
-      .tabBar(this.TabBuilder('tab_settings', 2))
+      .scrollable(false)
+      .barHeight(60)
+      .barMode(BarMode.Fixed)
+      .onChange((index: number) => {
+        this.currentIndex = index;
+      })
     }
-    .vertical(false)
-    .barMode(BarMode.Fixed)
-    .barWidth('100%')
-    .barHeight(60)
-    .animationDuration(300)
-    .onChange((index: number) => {
-      this.currentIndex = index;
-    })
     .width('100%')
     .height('100%')
-    .backgroundColor(gc('bg_primary'))
+    .backgroundColor(gc('bg_primary', this.themeVersion))
   }
 }

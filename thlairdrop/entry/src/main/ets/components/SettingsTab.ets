@@ -7,9 +7,6 @@ import { SelectPickerDialog, SelectOption } from './SelectPickerDialog';
 import { gc, ThemeManager } from '../utils/ThemeManager';
 import { I18nManager, t } from '../utils/I18nManager';
 
-// 获取全局上下文
-let context = getContext(this) as common.UIAbilityContext;
-
 // 设置项接口
 interface SettingsItem {
   label: string;
@@ -20,45 +17,38 @@ interface SettingsItem {
   onClick?: () => void;
 }
 
-// 主题选项
-const getThemeOptions = (): SelectOption[] => [
-  { value: 'system', label: t('theme_system') },
-  { value: 'light', label: t('theme_light') },
-  { value: 'dark', label: t('theme_dark') },
-  { value: 'black', label: t('theme_black') }
-];
 
 // 色彩选项
-const getColorOptions = (): SelectOption[] => [
-  { value: 'blue', label: t('color_blue') },
-  { value: 'green', label: t('color_green') },
-  { value: 'yellow', label: t('color_yellow') },
-  { value: 'orange', label: t('color_orange') },
-  { value: 'red', label: t('color_red') },
-  { value: 'pink', label: t('color_pink') },
-  { value: 'purple', label: t('color_purple') },
-  { value: 'teal', label: t('color_teal') }
+const getColorOptions = (lv?: number): SelectOption[] => [
+  { value: 'blue', label: t('color_blue', lv) },
+  { value: 'green', label: t('color_green', lv) },
+  { value: 'yellow', label: t('color_yellow', lv) },
+  { value: 'orange', label: t('color_orange', lv) },
+  { value: 'red', label: t('color_red', lv) },
+  { value: 'pink', label: t('color_pink', lv) },
+  { value: 'purple', label: t('color_purple', lv) },
+  { value: 'teal', label: t('color_teal', lv) }
 ];
 
 // 语言选项
-const getLanguageOptions = (): SelectOption[] => [
-  { value: 'system', label: t('language_system') },
+const getLanguageOptions = (lv?: number): SelectOption[] => [
+  { value: 'system', label: t('language_system', lv) },
   { value: 'zh', label: '中文' },
   { value: 'en', label: 'English' }
 ];
 
 // 快速保存选项
-const getQuickSaveOptions = (): SelectOption[] => [
-  { value: '0', label: t('quick_save_off') },
-  { value: '1', label: t('quick_save_fav') },
-  { value: '2', label: t('quick_save_on') }
+const getQuickSaveOptions = (lv?: number): SelectOption[] => [
+  { value: '0', label: t('quick_save_off', lv) },
+  { value: '1', label: t('quick_save_fav', lv) },
+  { value: '2', label: t('quick_save_on', lv) }
 ];
 
 // 保存目录选项
-const getSaveDirOptions = (): SelectOption[] => [
-  { value: '下载', label: '下载' },
-  { value: '图片', label: '图片' },
-  { value: '文档', label: '文档' }
+const getSaveDirOptions = (lv?: number): SelectOption[] => [
+  { value: '下载', label: t('save_dir_download', lv) },
+  { value: '图片', label: t('save_dir_pictures', lv) },
+  { value: '文档', label: t('save_dir_documents', lv) }
 ];
 
 @Component
@@ -73,9 +63,9 @@ export struct SettingsTab {
   private context: common.UIAbilityContext | null = null;
   
   // 设置状态
-  @State theme: string = 'system';
-  @State colorTheme: string = 'blue';
-  @State language: string = 'system';
+  @StorageLink('appTheme') theme: string = 'system';
+  @StorageLink('appColorTheme') colorTheme: string = 'blue';
+  @StorageLink('appLanguage') language: string = 'system';
   @State encryptionEnabled: boolean = true;
   @Link saveDir: string;
   @Watch('onRefreshTriggered') @StorageProp('themeVersion') themeVersion: number = 0;
@@ -93,30 +83,18 @@ export struct SettingsTab {
   @State tempPort: string = '';
   
   // 选择弹窗状态
-  @State showThemePicker: boolean = false;
   @State showLanguagePicker: boolean = false;
   @State showQuickSavePicker: boolean = false;
   @State showSaveDirPicker: boolean = false;
   
-  // 主题弹窗控制器
-  private themeDialogController: CustomDialogController = new CustomDialogController({
-    builder: SelectPickerDialog({
-      title: t('theme_title'),
-      options: getThemeOptions(),
-      currentValue: this.theme,
-      onSelected: (value: string) => this.onThemeSelected(value)
-    }),
-    autoCancel: true,
-    alignment: DialogAlignment.Center
-  });
   
   // 色彩弹窗控制器
   private colorThemeDialogController: CustomDialogController = new CustomDialogController({
     builder: SelectPickerDialog({
-      title: t('color_title'),
-      options: getColorOptions(),
+      title: t('color_title', this.languageVersion),
+      options: getColorOptions(this.languageVersion),
       currentValue: this.colorTheme,
-      onSelected: (value: string) => this.onColorThemeSelected(value)
+      onSelected: (value: string): void => this.onColorThemeSelected(value)
     }),
     autoCancel: true,
     alignment: DialogAlignment.Center
@@ -125,10 +103,10 @@ export struct SettingsTab {
   // 语言弹窗控制器
   private languageDialogController: CustomDialogController = new CustomDialogController({
     builder: SelectPickerDialog({
-      title: t('language_title'),
-      options: getLanguageOptions(),
+      title: t('language_title', this.languageVersion),
+      options: getLanguageOptions(this.languageVersion),
       currentValue: this.language,
-      onSelected: (value: string) => this.onLanguageSelected(value)
+      onSelected: (value: string): void => this.onLanguageSelected(value)
     }),
     autoCancel: true,
     alignment: DialogAlignment.Center
@@ -137,10 +115,10 @@ export struct SettingsTab {
   // 快速保存弹窗控制器
   private quickSaveDialogController: CustomDialogController = new CustomDialogController({
     builder: SelectPickerDialog({
-      title: t('quick_save'),
-      options: getQuickSaveOptions(),
+      title: t('quick_save', this.languageVersion),
+      options: getQuickSaveOptions(this.languageVersion),
       currentValue: this.quickSaveMode.toString(),
-      onSelected: (value: string) => this.onQuickSaveSelected(value)
+      onSelected: (value: string): void => this.onQuickSaveSelected(value)
     }),
     autoCancel: true,
     alignment: DialogAlignment.Center
@@ -149,10 +127,10 @@ export struct SettingsTab {
   // 保存目录弹窗控制器
   private saveDirDialogController: CustomDialogController = new CustomDialogController({
     builder: SelectPickerDialog({
-      title: t('save_dir'),
-      options: getSaveDirOptions(),
+      title: t('save_dir', this.languageVersion),
+      options: getSaveDirOptions(this.languageVersion),
       currentValue: this.saveDir,
-      onSelected: (value: string) => this.onSaveDirSelected(value)
+      onSelected: (value: string): void => this.onSaveDirSelected(value)
     }),
     autoCancel: true,
     alignment: DialogAlignment.Center
@@ -186,6 +164,7 @@ export struct SettingsTab {
       // 应用主题
       this.applyTheme(this.theme);
       this.applyColorTheme(this.colorTheme);
+      this.applyLanguage(this.language);
     }).catch((err: Error) => {
       hilog.error(0x0000, 'SettingsTab', `Failed to load settings: ${err.message}`);
     });
@@ -193,9 +172,7 @@ export struct SettingsTab {
   
   // 应用主题
   private applyTheme(theme: string): void {
-    // 存储到全局状态，供其他组件使用
     AppStorage.setOrCreate('appTheme', theme);
-    // 触发主题版本更新，确保 UI 刷新
     ThemeManager.incrementThemeVersion();
     hilog.info(0x0000, 'SettingsTab', `Theme applied: ${theme}`);
   }
@@ -203,36 +180,27 @@ export struct SettingsTab {
   // 应用色彩
   private applyColorTheme(color: string): void {
     AppStorage.setOrCreate('appColorTheme', color);
-    // 触发主题版本更新，确保 UI 刷新
     ThemeManager.incrementThemeVersion();
     hilog.info(0x0000, 'SettingsTab', `Color Theme applied: ${color}`);
   }
   
   // 应用语言
   private applyLanguage(language: string): void {
-    // 存储到全局状态，供其他组件使用
     AppStorage.setOrCreate('appLanguage', language);
-    // 触发语言版本更新，确保 UI 刷新
     I18nManager.incrementLanguageVersion();
     hilog.info(0x0000, 'SettingsTab', `Language applied: ${language}`);
   }
   
-  // 主题选择回调
-  private onThemeSelected(value: string): void {
-    this.theme = value;
-    this.settingsService.setTheme(value);
-    this.applyTheme(value);
-    const label = getThemeOptions().find(o => o.value === value)?.label || value;
-    promptAction.showToast({ message: '主题已切换为: ' + label });
-  }
   
   // 色彩选择回调
   private onColorThemeSelected(value: string): void {
     this.colorTheme = value;
     this.settingsService.setColorTheme(value);
     this.applyColorTheme(value);
-    const label = getColorOptions().find(o => o.value === value)?.label || value;
-    promptAction.showToast({ message: '色彩已切换为: ' + label });
+    const options = getColorOptions(this.languageVersion);
+    const option = options.find((o: SelectOption): boolean => o.value === value);
+    const label = option ? option.label : value;
+    promptAction.showToast({ message: t('color_title', this.languageVersion) + ': ' + label });
   }
   
   // 语言选择回调
@@ -240,146 +208,210 @@ export struct SettingsTab {
     this.language = value;
     this.settingsService.setLanguage(value);
     this.applyLanguage(value);
-    const label = getLanguageOptions().find(o => o.value === value)?.label || value;
-    promptAction.showToast({ message: '语言已切换为: ' + label });
+    const options = getLanguageOptions(this.languageVersion);
+    const option = options.find((o: SelectOption): boolean => o.value === value);
+    const label = option ? option.label : value;
+    promptAction.showToast({ message: t('language_title', this.languageVersion) + ': ' + label });
   }
   
   // 快速保存选择回调
   private onQuickSaveSelected(value: string): void {
     this.quickSaveMode = parseInt(value);
     this.settingsService.setQuickSaveMode(this.quickSaveMode);
-    const label = getQuickSaveOptions().find(o => o.value === value)?.label || value;
-    promptAction.showToast({ message: '快速保存已设置为: ' + label });
+    const options = getQuickSaveOptions(this.languageVersion);
+    const option = options.find((o: SelectOption): boolean => o.value === value);
+    const label = option ? option.label : value;
+    promptAction.showToast({ message: t('quick_save', this.languageVersion) + ': ' + label });
   }
   
   // 保存目录选择回调
   private onSaveDirSelected(value: string): void {
     this.saveDir = value;
     this.settingsService.setSaveDir(value);
-    promptAction.showToast({ message: '保存目录已设置为: ' + value });
+    promptAction.showToast({ message: t('save_dir', this.languageVersion) + ': ' + t(value, this.languageVersion) });
   }
 
   build() {
     Scroll() {
       Column() {
-        Text(t('tab_settings'))
+        Text(t('tab_settings', this.languageVersion))
           .fontSize(28)
           .fontWeight(FontWeight.Bold)
-          .fontColor(gc('text_primary'))
+          .fontColor(gc('text_primary', this.themeVersion))
           .width('100%')
           .padding({ left: 32, top: 20, bottom: 24 })
 
-        this.SettingsSection(t('general_settings'), [
-          { 
-            label: t('theme_title'), 
-            value: getThemeOptions().find(o => o.value === this.theme)?.label || this.theme,
-            key: 'theme',
-            onClick: (): void => { this.themeDialogController.open(); }
-          },
-          { 
-            label: t('color_title'), 
-            value: getColorOptions().find(o => o.value === this.colorTheme)?.label || this.colorTheme,
-            key: 'color',
-            onClick: (): void => { this.colorThemeDialogController.open(); }
-          },
-          { 
-            label: t('language_title'), 
-            value: getLanguageOptions().find(o => o.value === this.language)?.label || this.language,
-            key: 'lang',
-            onClick: (): void => { this.languageDialogController.open(); }
-          },
-          { 
-            label: t('animation_title'), 
-            value: '', 
-            isToggle: true, 
-            isOn: this.animationEnabled,
-            key: 'anim',
-            onClick: (): void => this.toggleAnimation()
-          }
-        ])
+        // 常规设置
+        Column() {
+          Text(t('general_settings', this.languageVersion))
+            .fontSize(14)
+            .fontColor(gc('text_secondary', this.themeVersion))
+            .width('100%')
+            .padding({ left: 32, bottom: 8 })
 
-        this.SettingsSection(t('receive_settings'), [
-          { 
-            label: t('quick_save'), 
-            value: getQuickSaveOptions().find(o => o.value === this.quickSaveMode.toString())?.label || this.quickSaveMode.toString(),
-            key: 'quickSave',
-            onClick: (): void => { this.quickSaveDialogController.open(); }
-          },
-          { 
-            label: t('save_dir'), 
-            value: this.saveDir,
-            key: 'dir',
-            onClick: (): void => { this.saveDirDialogController.open(); }
+          Column() {
+            SettingsRowComponent({
+              label: t('color_title', this.languageVersion),
+              value: (getColorOptions(this.languageVersion).find((o: SelectOption): boolean => o.value === this.colorTheme)?.label || this.colorTheme) as string,
+              themeVersion: this.themeVersion,
+              languageVersion: this.languageVersion,
+              onItemClick: (): void => { this.colorThemeDialogController.open(); }
+            })
+            SettingsRowComponent({
+              label: t('language_title', this.languageVersion),
+              value: (getLanguageOptions(this.languageVersion).find((o: SelectOption): boolean => o.value === this.language)?.label || this.language) as string,
+              themeVersion: this.themeVersion,
+              languageVersion: this.languageVersion,
+              onItemClick: (): void => { this.languageDialogController.open(); }
+            })
+            SettingsRowComponent({
+              label: t('animation_title', this.languageVersion),
+              isToggle: true,
+              isOn: this.animationEnabled,
+              themeVersion: this.themeVersion,
+              languageVersion: this.languageVersion,
+              onItemClick: (): void => { this.toggleAnimation(); }
+            })
           }
-        ])
+          .width('90%')
+          .backgroundColor(gc('bg_secondary', this.themeVersion))
+          .borderRadius(16)
+          .shadow({ radius: 8, color: '#0A000000', offsetY: 4 })
+        }
+        .width('100%')
+        .margin({ bottom: 24 })
 
-        this.SettingsSection(t('network_settings'), [
-          { 
-            label: t('device_alias'), 
-            value: this.aliasName, 
-            key: 'alias',
-            onClick: (): void => this.showAliasInputDialog()
-          },
-          { 
-            label: t('device_port'), 
-            value: this.port.toString(),
-            key: 'port',
-            onClick: (): void => this.showPortInputDialog()
-          }
-        ])
+        // 接收设置
+        Column() {
+          Text(t('receive_settings', this.languageVersion))
+            .fontSize(14)
+            .fontColor(gc('text_secondary', this.themeVersion))
+            .width('100%')
+            .padding({ left: 32, bottom: 8 })
 
-        this.SettingsSection(t('about_title'), [
-          { 
-            label: t('privacy_policy'), 
-            value: '',
-            key: 'privacy',
-            onClick: (): void => this.openPrivacyPolicy()
-          },
-          { 
-            label: t('third_party'), 
-            value: '',
-            key: 'third',
-            onClick: (): void => { router.pushUrl({ url: 'pages/ThirdPartyLicenses' }); }
+          Column() {
+            SettingsRowComponent({
+              label: t('quick_save', this.languageVersion),
+              value: (getQuickSaveOptions(this.languageVersion).find((o: SelectOption): boolean => o.value === this.quickSaveMode.toString())?.label || this.quickSaveMode.toString()) as string,
+              themeVersion: this.themeVersion,
+              languageVersion: this.languageVersion,
+              onItemClick: (): void => { this.quickSaveDialogController.open(); }
+            })
+            SettingsRowComponent({
+              label: t('save_dir', this.languageVersion),
+              value: t(this.saveDir, this.languageVersion),
+              themeVersion: this.themeVersion,
+              languageVersion: this.languageVersion,
+              onItemClick: (): void => { this.saveDirDialogController.open(); }
+            })
           }
-        ])
+          .width('90%')
+          .backgroundColor(gc('bg_secondary', this.themeVersion))
+          .borderRadius(16)
+          .shadow({ radius: 8, color: '#0A000000', offsetY: 4 })
+        }
+        .width('100%')
+        .margin({ bottom: 24 })
+
+        // 网络设置
+        Column() {
+          Text(t('network_settings', this.languageVersion))
+            .fontSize(14)
+            .fontColor(gc('text_secondary', this.themeVersion))
+            .width('100%')
+            .padding({ left: 32, bottom: 8 })
+
+          Column() {
+            SettingsRowComponent({
+              label: t('device_alias', this.languageVersion),
+              value: this.aliasName,
+              themeVersion: this.themeVersion,
+              languageVersion: this.languageVersion,
+              onItemClick: (): void => { this.showAliasInputDialog(); }
+            })
+            SettingsRowComponent({
+              label: t('device_port', this.languageVersion),
+              value: this.port.toString(),
+              themeVersion: this.themeVersion,
+              languageVersion: this.languageVersion,
+              onItemClick: (): void => { this.showPortInputDialog(); }
+            })
+          }
+          .width('90%')
+          .backgroundColor(gc('bg_secondary', this.themeVersion))
+          .borderRadius(16)
+          .shadow({ radius: 8, color: '#0A000000', offsetY: 4 })
+        }
+        .width('100%')
+        .margin({ bottom: 24 })
 
         // 关于
+        Column() {
+          Text(t('about_title', this.languageVersion))
+            .fontSize(14)
+            .fontColor(gc('text_secondary', this.themeVersion))
+            .width('100%')
+            .padding({ left: 32, bottom: 8 })
+
+          Column() {
+            SettingsRowComponent({
+              label: t('privacy_policy', this.languageVersion),
+              themeVersion: this.themeVersion,
+              languageVersion: this.languageVersion,
+              onItemClick: (): void => { this.openPrivacyPolicy(); }
+            })
+            SettingsRowComponent({
+              label: t('third_party', this.languageVersion),
+              themeVersion: this.themeVersion,
+              languageVersion: this.languageVersion,
+              onItemClick: (): void => { router.pushUrl({ url: 'pages/ThirdPartyLicenses' }); }
+            })
+          }
+          .width('90%')
+          .backgroundColor(gc('bg_secondary', this.themeVersion))
+          .borderRadius(16)
+          .shadow({ radius: 8, color: '#0A000000', offsetY: 4 })
+        }
+        .width('100%')
+        .margin({ bottom: 24 })
+
+        // 版本信息
         Column() {
           Image($r('app.media.app_icon'))
             .width(80).height(80)
             .borderRadius(16)
             .margin({ top: 20, bottom: 12 })
-          Text(t('app_name'))
+          Text(t('app_name', this.languageVersion))
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
-            .fontColor(gc('text_primary'))
-          Text('版本: 1.0.0')
+            .fontColor(gc('text_primary', this.themeVersion))
+          Text(t('completed', this.languageVersion) + ': 1.0.0') // 使用已有的翻译 key 占位
             .fontSize(14)
-            .fontColor(gc('text_secondary'))
+            .fontColor(gc('text_secondary', this.themeVersion))
             .margin({ top: 4 })
-          Text(t('copy_right'))
+          Text(t('copy_right', this.languageVersion))
             .fontSize(12)
-            .fontColor(gc('text_tertiary'))
+            .fontColor(gc('text_tertiary', this.themeVersion))
             .margin({ top: 8 })
         }
         .width('100%')
-        .alignItems(HorizontalAlign.Center)
-        .margin({ bottom: 64 })
+        .padding({ bottom: 40 })
       }
       .width('100%')
     }
-    .key(`settings_scroll_${this.refreshKey}`)
     .width('100%')
     .height('100%')
-    .backgroundColor(gc('bg_primary'))
+    .scrollBar(BarState.Off)
+    .key(`settings_scroll_${this.refreshKey}`)
+    .backgroundColor(gc('bg_primary', this.themeVersion))
     .bindSheet(this.showAliasDialog, this.AliasInputDialog(), {
       height: 200,
-      backgroundColor: gc('bg_secondary'),
+      backgroundColor: gc('bg_secondary', this.themeVersion),
       dragBar: true
     })
     .bindSheet(this.showPortDialog, this.PortInputDialog(), {
       height: 200,
-      backgroundColor: gc('bg_secondary'),
+      backgroundColor: gc('bg_secondary', this.themeVersion),
       dragBar: true
     })
   }
@@ -387,35 +419,35 @@ export struct SettingsTab {
   // 别名输入弹窗
   @Builder AliasInputDialog() {
     Column() {
-      Text(t('change_alias'))
+      Text(t('change_alias', this.languageVersion))
         .fontSize(18)
         .fontWeight(FontWeight.Medium)
-        .fontColor(gc('text_primary'))
+        .fontColor(gc('text_primary', this.themeVersion))
         .margin({ top: 16, bottom: 16 })
       
-      TextInput({ text: this.tempAliasName, placeholder: t('input_alias') })
+      TextInput({ text: this.tempAliasName, placeholder: t('input_alias', this.languageVersion) })
         .width('90%')
         .height(48)
-        .onChange((value: string) => {
+        .onChange((value: string): void => {
           this.tempAliasName = value;
         })
       
       Row() {
-        Button(t('cancel'))
+        Button(t('cancel', this.languageVersion))
           .width('40%')
-          .backgroundColor(gc('bg_primary'))
-          .fontColor(gc('text_primary'))
-          .onClick(() => {
+          .backgroundColor(gc('bg_primary', this.themeVersion))
+          .fontColor(gc('text_primary', this.themeVersion))
+          .onClick((): void => {
             this.showAliasDialog = false;
           })
         
-        Button(t('confirm'))
+        Button(t('confirm', this.languageVersion))
           .width('40%')
-          .onClick(() => {
+          .onClick((): void => {
             if (this.tempAliasName.trim()) {
               this.aliasName = this.tempAliasName.trim();
               this.settingsService.setAliasName(this.aliasName);
-              promptAction.showToast({ message: '别名已修改为: ' + this.aliasName });
+              promptAction.showToast({ message: t('change_alias', this.languageVersion) + ': ' + this.aliasName });
             }
             this.showAliasDialog = false;
           })
@@ -431,39 +463,39 @@ export struct SettingsTab {
   // 端口输入弹窗
   @Builder PortInputDialog() {
     Column() {
-      Text(t('change_port'))
+      Text(t('change_port', this.languageVersion))
         .fontSize(18)
         .fontWeight(FontWeight.Medium)
-        .fontColor(gc('text_primary'))
+        .fontColor(gc('text_primary', this.themeVersion))
         .margin({ top: 16, bottom: 16 })
       
-      TextInput({ text: this.tempPort, placeholder: t('input_port') })
+      TextInput({ text: this.tempPort, placeholder: t('input_port', this.languageVersion) })
         .width('90%')
         .height(48)
         .type(InputType.Number)
-        .onChange((value: string) => {
+        .onChange((value: string): void => {
           this.tempPort = value;
         })
       
       Row() {
-        Button(t('cancel'))
+        Button(t('cancel', this.languageVersion))
           .width('40%')
-          .backgroundColor(gc('bg_primary'))
-          .fontColor(gc('text_primary'))
-          .onClick(() => {
+          .backgroundColor(gc('bg_primary', this.themeVersion))
+          .fontColor(gc('text_primary', this.themeVersion))
+          .onClick((): void => {
             this.showPortDialog = false;
           })
         
-        Button(t('confirm'))
+        Button(t('confirm', this.languageVersion))
           .width('40%')
-          .onClick(() => {
+          .onClick((): void => {
             const newPort = parseInt(this.tempPort);
             if (newPort >= 1024 && newPort <= 65535) {
               this.port = newPort;
               this.settingsService.setPort(this.port);
-              promptAction.showToast({ message: `端口已修改为: ${this.port}，请重启应用生效` });
+              promptAction.showToast({ message: t('change_port', this.languageVersion) + ': ' + this.port });
             } else {
-              promptAction.showToast({ message: '端口号无效，请输入 1024-65535 之间的数字' });
+              promptAction.showToast({ message: 'Error' });
             }
             this.showPortDialog = false;
           })
@@ -480,7 +512,7 @@ export struct SettingsTab {
   private toggleAnimation(): void {
     this.animationEnabled = !this.animationEnabled;
     this.settingsService.setAnimationEnabled(this.animationEnabled);
-    promptAction.showToast({ message: this.animationEnabled ? '动画已开启' : '动画已关闭' });
+    promptAction.showToast({ message: t('animation_title', this.languageVersion) });
   }
 
 
@@ -500,73 +532,56 @@ export struct SettingsTab {
   private openPrivacyPolicy() {
     // 使用系统浏览器打开隐私政策页面
     const privacyUrl = 'https://github.com/never88gone/localsend_never88gone/blob/main/Privacy.md';
-    context.openLink(privacyUrl).catch((err: Error) => {
+    this.context?.openLink(privacyUrl).catch((err: Error) => {
       hilog.error(0x0000, 'SettingsTab', 'Failed to open privacy policy: ' + err.message);
-      promptAction.showToast({ message: '无法打开浏览器' });
+      promptAction.showToast({ message: 'Error' });
     });
   }
+}
 
-  @Builder SettingsSection(title: string, items: SettingsItem[]) {
-    Column() {
-      Text(title)
-        .fontSize(14)
-        .fontColor(gc('accent'))
-        .fontWeight(FontWeight.Medium)
-        .margin({ left: 32, bottom: 10 })
-      
-      Column() {
-        ForEach(items, (item: SettingsItem, index: number) => {
-          this.SettingsRow(item.label, item.value, item.isToggle, item.isOn, item.onClick)
-          if (index < items.length - 1) {
-            Divider()
-              .color(gc('divider'))
-              .strokeWidth(0.5)
-              .margin({ left: 16, right: 16 })
-          }
-        })
-      }
-      .backgroundColor(gc('bg_secondary'))
-      .borderRadius(16)
-      .margin({ left: 16, right: 16 })
-    }
-    .width('100%')
-    .margin({ bottom: 24 })
-    .alignItems(HorizontalAlign.Start)
-  }
+/**
+ * 设置行组件
+ */
+@Component
+struct SettingsRowComponent {
+  @Prop label: string;
+  @Prop value: string = '';
+  @Prop isToggle: boolean = false;
+  @Prop isOn: boolean = false;
+  @Prop themeVersion: number;
+  @Prop languageVersion: number;
+  onItemClick: () => void = (): void => {};
 
-  @Builder SettingsRow(label: string, value: string, isToggle?: boolean, isOn?: boolean, onClick?: () => void) {
+  build() {
     Row() {
-      Text(label)
+      Text(this.label)
         .fontSize(16)
-        .fontColor(gc('text_primary'))
-      
-      Blank()
-      
-      if (isToggle) {
-        Toggle({ type: ToggleType.Switch, isOn: isOn ?? true })
-          .selectedColor(gc('accent'))
-          .onChange((isOn: boolean) => {
-            if (onClick) onClick();
-          })
+        .fontColor(gc('text_primary', this.themeVersion))
+        .layoutWeight(1)
+
+      if (this.isToggle) {
+        Toggle({ type: ToggleType.Switch, isOn: this.isOn })
+          .selectedColor(gc('accent', this.themeVersion))
+          .onChange((): void => this.onItemClick())
       } else {
         Row() {
-          Text(value)
+          Text(this.value)
             .fontSize(14)
-            .fontColor(gc('text_secondary'))
-          // 右箭头图标
+            .fontColor(gc('text_secondary', this.themeVersion))
+            .margin({ right: 4 })
+          
           SymbolGlyph($r('sys.symbol.chevron_right'))
             .fontSize(16)
-            .fontColor([gc('text_tertiary')])
-            .margin({ left: 8 })
+            .fontColor([gc('text_tertiary', this.themeVersion)])
         }
-        .alignItems(VerticalAlign.Center)
       }
     }
     .width('100%')
-    .height(56)
-    .padding({ left: 16, right: 16 })
-    .onClick(() => {
-      if (!isToggle && onClick) onClick();
+    .padding({ left: 16, right: 16, top: 16, bottom: 16 })
+    .onClick((): void => {
+      if (!this.isToggle) {
+        this.onItemClick();
+      }
     })
   }
 }

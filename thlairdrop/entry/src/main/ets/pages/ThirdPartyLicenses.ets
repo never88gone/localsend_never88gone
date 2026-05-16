@@ -29,7 +29,7 @@ struct ThirdPartyLicenses {
           router.back();
         })
         
-        Text(t('third_party'))
+        Text(t('third_party', this.languageVersion))
           .fontSize(20)
           .fontWeight(FontWeight.Medium)
           .fontColor(gc('text_primary'))

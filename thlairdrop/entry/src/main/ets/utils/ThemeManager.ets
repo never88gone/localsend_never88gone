@@ -23,18 +23,21 @@ export class ThemeManager {
   // 系统主题状态
   private static systemTheme: string = 'light';
 
-  // 获取基础颜色映射（根据主题）
-  private static getBaseColorMap(theme: string): ColorMap {
-    if (theme === 'dark') {
+  // 获取基础颜色映射（根据主题和色彩主题）
+  private static getBaseColorMap(theme: string, colorTheme: string): ColorMap {
+    const palette = ThemeManager.PALETTES[colorTheme] || ThemeManager.PALETTES['blue'];
+    const isDark = theme === 'dark' || theme === 'black';
+
+    if (isDark) {
       return {
-        bg_primary: '#1A1A1A',
-        bg_secondary: '#2C2C2C',
+        bg_primary: palette[9],
+        bg_secondary: palette[8],
         text_primary: '#FFFFFF',
-        text_secondary: '#CCCCCC',
-        text_tertiary: '#999999',
-        accent: '#3A9AFF',
-        accent_bg: '#1A334D',
-        divider: '#3D3D3D',
+        text_secondary: palette[1],
+        text_tertiary: palette[3],
+        accent: palette[4],
+        accent_bg: palette[8],
+        divider: palette[8],
         success: '#81C784',
         success_bg: '#1B3D20',
         error: '#E57373',
@@ -43,41 +46,23 @@ export class ThemeManager {
         warning_bg: '#4D331A',
         transparent: 'transparent'
       };
-    } else if (theme === 'black') {
-      return {
-        bg_primary: '#000000',
-        bg_secondary: '#121212',
-        text_primary: '#FFFFFF',
-        text_secondary: '#B3B3B3',
-        text_tertiary: '#666666',
-        accent: '#3A9AFF',
-        accent_bg: '#0D1A26',
-        divider: '#262626',
-        success: '#81C784',
-        success_bg: '#0D1F12',
-        error: '#E57373',
-        error_bg: '#2A0F0F',
-        warning: '#FFB74D',
-        warning_bg: '#2A1A0D',
-        transparent: 'transparent'
-      };
     } else {
       // light
       return {
-        bg_primary: '#F1F3F5',
+        bg_primary: palette[1],
         bg_secondary: '#FFFFFF',
-        text_primary: '#333333',
-        text_secondary: '#666666',
-        text_tertiary: '#999999',
-        accent: '#007DFF',
-        accent_bg: '#E5F3FF',
-        divider: '#E5E5E5',
-        success: '#4CAF50',
-        success_bg: '#E8F5E9',
-        error: '#F44336',
-        error_bg: '#FFEBEE',
-        warning: '#FF9800',
-        warning_bg: '#FFF3E0',
+        text_primary: palette[9],
+        text_secondary: palette[7],
+        text_tertiary: palette[3],
+        accent: palette[5],
+        accent_bg: palette[1],
+        divider: palette[1],
+        success: '#10B981',
+        success_bg: '#D1FAE5',
+        error: '#EF4444',
+        error_bg: '#FEE2E2',
+        warning: '#F59E0B',
+        warning_bg: '#FEF3C7',
         transparent: 'transparent'
       };
     }
@@ -85,13 +70,21 @@ export class ThemeManager {
 
   // UI/UX Pro Max 调色盘定义 (12 色阶: 50, 100, 200, 300, 400, 500, 600, 700, 800, 900)
   private static readonly PALETTES: Record<string, string[]> = {
+    // 蓝色 - 专业、可靠
     'blue': ['#EFF6FF', '#DBEAFE', '#BFDBFE', '#93C5FD', '#60A5FA', '#3B82F6', '#2563EB', '#1D4ED8', '#1E40AF', '#1E3A8A'],
+    // 绿色 - 成长、新鲜 (清新青绿)
     'green': ['#F0FDF4', '#DCFCE7', '#BBF7D0', '#86EFAC', '#4ADE80', '#22C55E', '#16A34A', '#15803D', '#166534', '#14532D'],
-    'yellow': ['#FEFCE8', '#FEF9C3', '#FEF08A', '#FDE047', '#FACC15', '#EAB308', '#CA8A04', '#A16207', '#854D0E', '#713F12'],
+    // 黄色 - 活力、明亮
+    'yellow': ['#FFFBEB', '#FEF3C7', '#FDE68A', '#FCD34D', '#FBBF24', '#F59E0B', '#D97706', '#B45309', '#92400E', '#78350F'],
+    // 橙色 - 热情、现代 (Action Orange)
     'orange': ['#FFF7ED', '#FFEDD5', '#FED7AA', '#FDBA74', '#FB923C', '#F97316', '#EA580C', '#C2410C', '#9A3412', '#7C2D12'],
+    // 红色 - 警示、激情
     'red': ['#FEF2F2', '#FEE2E2', '#FECACA', '#FCA5A5', '#F87171', '#EF4444', '#DC2626', '#B91C1C', '#991B1B', '#7F1D1D'],
+    // 粉色 - 柔和、优雅
     'pink': ['#FDF2F8', '#FCE7F3', '#FBCFE8', '#F9A8D4', '#F472B6', '#EC4899', '#DB2777', '#BE185D', '#9D174D', '#831843'],
+    // 紫色 - 高贵、创新
     'purple': ['#FAF5FF', '#F3E8FF', '#E9D5FF', '#D8B4FE', '#C084FC', '#A855F7', '#9333EA', '#7E22CE', '#6B21A8', '#581C87'],
+    // 青色 - 沉稳、极客 (Teal Productivity)
     'teal': ['#F0FDFA', '#CCFBF1', '#99F6E4', '#5EEAD4', '#2DD4BF', '#14B8A6', '#0D9488', '#0F766E', '#115E59', '#134E4A']
   };
 
@@ -197,15 +190,11 @@ export class ThemeManager {
     const colorTheme = ThemeManager.getColorTheme();
     const isDark = theme === 'dark' || theme === 'black';
     
-    // 获取基础颜色映射
-    const colorMap = ThemeManager.getBaseColorMap(theme);
-    
-    // 应用颜色主题
-    colorMap.accent = ThemeManager.getColorThemeAccent(colorTheme);
-    colorMap.accent_bg = ThemeManager.getColorThemeAccentBg(colorTheme, isDark);
+    // 获取颜色映射
+    const colorMap = ThemeManager.getBaseColorMap(theme, colorTheme);
     
     const value = ThemeManager.getColorValue(colorMap, key);
-    return value || ThemeManager.getColorValue(ThemeManager.getBaseColorMap('light'), key) || '#000000';
+    return value || ThemeManager.getColorValue(ThemeManager.getBaseColorMap('light', colorTheme), key) || '#000000';
   }
 
   // 获取当前系统主题状态（供外部查询）

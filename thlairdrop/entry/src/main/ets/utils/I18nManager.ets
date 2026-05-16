@@ -1,3 +1,5 @@
+import i18n from '@ohos.i18n';
+
 // 语言字符串映射接口
 interface StringMap {
   tab_receive: string;
@@ -58,6 +60,9 @@ interface StringMap {
   network_settings: string;
   receive_settings: string;
   save_dir: string;
+  save_dir_download: string;
+  save_dir_pictures: string;
+  save_dir_documents: string;
   empty_history: string;
   change_alias: string;
   input_alias: string;
@@ -145,6 +150,9 @@ export class I18nManager {
       network_settings: '网络',
       receive_settings: '接收',
       save_dir: '保存目录',
+      save_dir_download: '下载',
+      save_dir_pictures: '图片',
+      save_dir_documents: '文档',
       empty_history: '暂无记录',
       change_alias: '修改别名',
       input_alias: '请输入设备别名',
@@ -224,6 +232,9 @@ export class I18nManager {
       network_settings: 'Network',
       receive_settings: 'Receive',
       save_dir: 'Save Directory',
+      save_dir_download: 'Download',
+      save_dir_pictures: 'Pictures',
+      save_dir_documents: 'Documents',
       empty_history: 'No History',
       change_alias: 'Change Alias',
       input_alias: 'Enter alias',
@@ -247,169 +258,41 @@ export class I18nManager {
   };
 
   private static getStringValue(langMap: StringMap, key: string): string {
-    switch (key) {
-      case 'tab_receive':
-        return langMap.tab_receive;
-      case 'tab_send':
-        return langMap.tab_send;
-      case 'tab_settings':
-        return langMap.tab_settings;
-      case 'history_title':
-        return langMap.history_title;
-      case 'device_alias':
-        return langMap.device_alias;
-      case 'device_port':
-        return langMap.device_port;
-      case 'device_ip':
-        return langMap.device_ip;
-      case 'quick_save':
-        return langMap.quick_save;
-      case 'quick_save_off':
-        return langMap.quick_save_off;
-      case 'quick_save_fav':
-        return langMap.quick_save_fav;
-      case 'quick_save_on':
-        return langMap.quick_save_on;
-      case 'offline':
-        return langMap.offline;
-      case 'pending_files':
-        return langMap.pending_files;
-      case 'accept':
-        return langMap.accept;
-      case 'reject':
-        return langMap.reject;
-      case 'in_progress':
-        return langMap.in_progress;
-      case 'cancel':
-        return langMap.cancel;
-      case 'retry':
-        return langMap.retry;
-      case 'view':
-        return langMap.view;
-      case 'completed':
-        return langMap.completed;
-      case 'failed':
-        return langMap.failed;
-      case 'waiting':
-        return langMap.waiting;
-      case 'cancelled':
-        return langMap.cancelled;
-      case 'select_files':
-        return langMap.select_files;
-      case 'clear':
-        return langMap.clear;
-      case 'file':
-        return langMap.file;
-      case 'media':
-        return langMap.media;
-      case 'text':
-        return langMap.text;
-      case 'app':
-        return langMap.app;
-      case 'nearby_devices':
-        return langMap.nearby_devices;
-      case 'scanning':
-        return langMap.scanning;
-      case 'no_devices':
-        return langMap.no_devices;
-      case 'scan_hint':
-        return langMap.scan_hint;
-      case 'help':
-        return langMap.help;
-      case 'send_text_title':
-        return langMap.send_text_title;
-      case 'input_text_placeholder':
-        return langMap.input_text_placeholder;
-      case 'confirm':
-        return langMap.confirm;
-      case 'theme_title':
-        return langMap.theme_title;
-      case 'theme_system':
-        return langMap.theme_system;
-      case 'theme_light':
-        return langMap.theme_light;
-      case 'theme_dark':
-        return langMap.theme_dark;
-      case 'theme_black':
-        return langMap.theme_black;
-      case 'color_title':
-        return langMap.color_title;
-      case 'color_blue':
-        return langMap.color_blue;
-      case 'color_green':
-        return langMap.color_green;
-      case 'color_yellow':
-        return langMap.color_yellow;
-      case 'color_orange':
-        return langMap.color_orange;
-      case 'color_red':
-        return langMap.color_red;
-      case 'color_pink':
-        return langMap.color_pink;
-      case 'color_purple':
-        return langMap.color_purple;
-      case 'color_teal':
-        return langMap.color_teal;
-      case 'language_title':
-        return langMap.language_title;
-      case 'language_system':
-        return langMap.language_system;
-      case 'animation_title':
-        return langMap.animation_title;
-      case 'general_settings':
-        return langMap.general_settings;
-      case 'network_settings':
-        return langMap.network_settings;
-      case 'receive_settings':
-        return langMap.receive_settings;
-      case 'save_dir':
-        return langMap.save_dir;
-      case 'empty_history':
-        return langMap.empty_history;
-      case 'change_alias':
-        return langMap.change_alias;
-      case 'input_alias':
-        return langMap.input_alias;
-      case 'change_port':
-        return langMap.change_port;
-      case 'input_port':
-        return langMap.input_port;
-      case 'about_title':
-        return langMap.about_title;
-      case 'app_name':
-        return langMap.app_name;
-      case 'copy_right':
-        return langMap.copy_right;
-      case 'privacy_policy':
-        return langMap.privacy_policy;
-      case 'third_party':
-        return langMap.third_party;
-      case 'app_intro_title':
-        return langMap.app_intro_title;
-      case 'app_intro_content':
-        return langMap.app_intro_content;
-      case 'how_to_send_title':
-        return langMap.how_to_send_title;
-      case 'how_to_send_content':
-        return langMap.how_to_send_content;
-      case 'how_to_receive_title':
-        return langMap.how_to_receive_title;
-      case 'how_to_receive_content':
-        return langMap.how_to_receive_content;
-      case 'notes_title':
-        return langMap.notes_title;
-      case 'notes_content':
-        return langMap.notes_content;
-      default:
-        return '';
-    }
+    // 使用 Record 类型进行安全的索引访问
+    const map = langMap as Object as Record<string, string>;
+    return map[key] || '';
   }
 
-  static getString(key: string): string {
-    const lang = AppStorage.get<string>('appLanguage') || 'zh';
+  static getString(key: string, languageVersion?: number): string {
+    // 如果 key 为空，直接返回
+    if (!key) return '';
+    
+    // 如果 key 本身就是我们要翻译的值之一（针对动态保存目录）
+    const specialMap: Record<string, string> = {
+      '下载': 'save_dir_download',
+      '图片': 'save_dir_pictures',
+      '文档': 'save_dir_documents',
+      'Download': 'save_dir_download',
+      'Pictures': 'save_dir_pictures',
+      'Documents': 'save_dir_documents'
+    };
+    
+    const lookupKey = specialMap[key] || key;
+    
+    let lang = AppStorage.get<string>('appLanguage') || 'system';
+    if (lang === 'system') {
+      const systemLang = i18n.System.getSystemLanguage();
+      lang = systemLang.startsWith('zh') ? 'zh' : 'en';
+    }
+    
     const langMap = lang === 'en' ? I18nManager.strings.en : I18nManager.strings.zh;
-    const value = I18nManager.getStringValue(langMap, key);
-    return value || I18nManager.getStringValue(I18nManager.strings.zh, key) || key;
+    const value = I18nManager.getStringValue(langMap, lookupKey);
+    
+    // 如果找不到翻译，返回 key 本身或从中文映射中查找
+    if (!value) {
+      return I18nManager.getStringValue(I18nManager.strings.zh, lookupKey) || key;
+    }
+    return value;
   }
 
   // 增加语言版本号，触发 UI 刷新
@@ -426,6 +309,6 @@ export class I18nManager {
   }
 }
 
-export function t(key: string): string {
-  return I18nManager.getString(key);
+export function t(key: string, languageVersion?: number): string {
+  return I18nManager.getString(key, languageVersion);
 }

@@ -1,280 +1,228 @@
+import promptAction from '@ohos.promptAction';
 import router from '@ohos.router';
-import fs from '@ohos.file.fs';
-import { fileTransferManager, TransferState, TransferDirection } from '../service/FileTransferManager';
 import { historyService, HistoryRecord } from '../services/HistoryService';
-import common from '@ohos.app.ability.common';
-import Want from '@ohos.app.ability.Want';
 import { gc, ThemeManager } from '../utils/ThemeManager';
 import { t } from '../utils/I18nManager';
-import promptAction from '@ohos.promptAction';
 
 @Entry
 @Component
 struct TransferHistory {
   @StorageProp('appTheme') currentTheme: string = 'system';
-  @StorageProp('appLanguage') currentLanguage: string = 'system';
   @Watch('onRefreshTriggered') @StorageProp('themeVersion') themeVersion: number = 0;
   @Watch('onRefreshTriggered') @StorageProp('languageVersion') languageVersion: number = 0;
   @State refreshKey: number = 0;
   @State currentTab: number = 0; // 0: 接收, 1: 发送
-  
+  @State historyRecords: HistoryRecord[] = [];
+
   onRefreshTriggered() {
     this.refreshKey++;
   }
-  @State receiveHistory: HistoryRecord[] = [];
-  @State sendHistory: HistoryRecord[] = [];
-  @State isLoading: boolean = true;
-  
-  aboutToAppear() {
-    this.loadHistory();
+
+  async aboutToAppear() {
+    await this.loadHistory();
   }
-  
+
   private async loadHistory() {
-    this.isLoading = true;
-    // 从持久化服务获取历史记录
-    const allRecords = await historyService.getAllRecords();
-    
-    this.receiveHistory = allRecords.filter(r => r.direction === 'receive');
-    this.sendHistory = allRecords.filter(r => r.direction === 'send');
-    this.isLoading = false;
+    this.historyRecords = await historyService.getAllRecords();
   }
-  
-  private formatTime(timestamp: number): string {
-    const date = new Date(timestamp);
-    const now = new Date();
-    
-    // 如果是今天的记录，只显示时间
-    if (date.toDateString() === now.toDateString()) {
-      return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-    }
-    
-    return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+
+  private async clearHistory() {
+    await historyService.clearAll();
+    await this.loadHistory();
+    promptAction.showToast({ message: t('clear', this.languageVersion) });
   }
-  
+
   private formatSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
     return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
   }
-  
-  // 打开文件
-  private openFile(item: HistoryRecord) {
-    if (!item.filePath || item.status !== 'completed') {
-      return;
-    }
-    try {
-      let context = getContext(this) as common.UIAbilityContext;
-      let want: Want = {
-        action: 'ohos.want.action.viewData',
-        uri: `file://${item.filePath}`
-      };
-      context.startAbility(want).then(() => {
-        console.info('Succeeded in starting ability for file view');
-      }).catch((err: Error) => {
-        console.error('Failed to start ability for file view:', err);
-        promptAction.showToast({ message: '无法打开文件，请检查是否安装了相关应用' });
-      });
-    } catch (e) {
-      console.error('Failed to open file:', e);
-    }
-  }
 
-  private async clearHistory() {
-    await historyService.clearAll();
-    this.loadHistory();
-    promptAction.showToast({ message: '历史记录已清除' });
+  private formatTime(timestamp: number): string {
+    const date = new Date(timestamp);
+    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
   }
 
   build() {
     Column() {
       // 顶部导航
       Row() {
-        // 返回按钮
         Button({ type: ButtonType.Circle }) {
           SymbolGlyph($r('sys.symbol.chevron_left'))
             .fontSize(24)
-            .fontColor([gc('text_primary')])
+            .fontColor([gc('text_primary', this.themeVersion)])
         }
         .width(44)
         .height(44)
-        .backgroundColor(gc('transparent'))
+        .backgroundColor(gc('transparent', this.themeVersion))
         .onClick(() => {
           router.back();
         })
-        
-        Text(t('history_title'))
+
+        Text(t('history_title', this.languageVersion))
           .fontSize(20)
           .fontWeight(FontWeight.Medium)
-          .fontColor(gc('text_primary'))
+          .fontColor(gc('text_primary', this.themeVersion))
           .layoutWeight(1)
           .textAlign(TextAlign.Center)
-        
-        // 清除按钮
+
         Button({ type: ButtonType.Circle }) {
           SymbolGlyph($r('sys.symbol.trash'))
-            .fontSize(20)
-            .fontColor([gc('text_secondary')])
+            .fontSize(22)
+            .fontColor([gc('text_secondary', this.themeVersion)])
         }
         .width(44)
         .height(44)
-        .backgroundColor(gc('transparent'))
+        .backgroundColor(gc('transparent', this.themeVersion))
         .onClick(() => {
           this.clearHistory();
         })
       }
       .width('100%')
-      .height(56)
-      .padding({ left: 8, right: 8 })
-      
-      // Tab 切换
+      .padding({ left: 16, right: 16, top: 20, bottom: 16 })
+
+      // 分段切换器
       Row() {
-        Text(t('tab_receive'))
-          .fontSize(16)
-          .fontColor(this.currentTab === 0 ? gc('accent') : gc('text_secondary'))
-          .fontWeight(this.currentTab === 0 ? FontWeight.Medium : FontWeight.Normal)
-          .layoutWeight(1)
-          .textAlign(TextAlign.Center)
-          .height('100%')
-          .onClick(() => { this.currentTab = 0; })
-        
-        Divider()
-          .vertical(true)
-          .height(20)
-          .color(gc('divider'))
-        
-        Text(t('tab_send'))
-          .fontSize(16)
-          .fontColor(this.currentTab === 1 ? gc('accent') : gc('text_secondary'))
-          .fontWeight(this.currentTab === 1 ? FontWeight.Medium : FontWeight.Normal)
-          .layoutWeight(1)
-          .textAlign(TextAlign.Center)
-          .height('100%')
-          .onClick(() => { this.currentTab = 1; })
-      }
-      .width('90%')
-      .height(48)
-      .backgroundColor(gc('bg_secondary'))
-      .borderRadius(24)
-      .margin({ top: 16 })
-      .padding(4)
-      
-      // 列表
-      if (this.isLoading) {
         Column() {
-          LoadingProgress()
-            .width(60)
-            .height(60)
-            .color(gc('accent'))
+          Text(t('tab_receive', this.languageVersion))
+            .fontSize(16)
+            .fontWeight(this.currentTab === 0 ? FontWeight.Medium : FontWeight.Normal)
+            .fontColor(this.currentTab === 0 ? gc('accent', this.themeVersion) : gc('text_secondary', this.themeVersion))
+          
+          if (this.currentTab === 0) {
+            Divider()
+              .strokeWidth(3)
+              .color(gc('accent', this.themeVersion))
+              .width(40)
+              .margin({ top: 4 })
+          }
+        }
+        .layoutWeight(1)
+        .onClick(() => { this.currentTab = 0; })
+
+        Column() {
+          Text(t('tab_send', this.languageVersion))
+            .fontSize(16)
+            .fontWeight(this.currentTab === 1 ? FontWeight.Medium : FontWeight.Normal)
+            .fontColor(this.currentTab === 1 ? gc('accent', this.themeVersion) : gc('text_secondary', this.themeVersion))
+          
+          if (this.currentTab === 1) {
+            Divider()
+              .strokeWidth(3)
+              .color(gc('accent', this.themeVersion))
+              .width(40)
+              .margin({ top: 4 })
+          }
+        }
+        .layoutWeight(1)
+        .onClick(() => { this.currentTab = 1; })
+      }
+      .width('100%')
+      .height(50)
+      .backgroundColor(gc('bg_secondary', this.themeVersion))
+      .padding({ top: 10 })
+
+      // 历史列表
+      if (this.getFilteredHistory().length > 0) {
+        List({ space: 12 }) {
+          ForEach(this.getFilteredHistory(), (item: HistoryRecord) => {
+            ListItem() {
+              this.HistoryItem(item)
+            }
+          })
+        }
+        .width('100%')
+        .layoutWeight(1)
+        .padding(16)
+        .edgeEffect(EdgeEffect.Spring)
+      } else {
+        Column() {
+          SymbolGlyph($r('sys.symbol.doc_text'))
+            .fontSize(64)
+            .fontColor([gc('divider', this.themeVersion)])
+          Text(t('empty_history', this.languageVersion))
+            .fontSize(16)
+            .fontColor(gc('text_tertiary', this.themeVersion))
+            .margin({ top: 16 })
         }
         .width('100%')
         .layoutWeight(1)
         .justifyContent(FlexAlign.Center)
-      } else {
-        if (this.currentTab === 0) {
-          this.HistoryList(this.receiveHistory)
-        } else {
-          this.HistoryList(this.sendHistory)
-        }
       }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(gc('bg_primary'))
-    .key(`history_column_${this.refreshKey}`)
+    .backgroundColor(gc('bg_primary', this.themeVersion))
   }
-  
-  @Builder HistoryList(items: HistoryRecord[]) {
-    if (items.length === 0) {
+
+  @Builder HistoryItem(item: HistoryRecord) {
+    Row() {
+      // 图标
       Column() {
-        // 空状态图标
-        SymbolGlyph($r('sys.symbol.folder'))
-          .fontSize(72)
-          .fontColor([gc('divider')])
-        
-        Text(t('empty_history'))
-          .fontSize(16)
-          .fontColor(gc('text_tertiary'))
-          .margin({ top: 20 })
+        SymbolGlyph(item.direction === 'receive' ? $r('sys.symbol.arrow_down_circle') : $r('sys.symbol.paperplane'))
+          .fontSize(28)
+          .fontColor([item.direction === 'receive' ? gc('success', this.themeVersion) : gc('accent', this.themeVersion)])
       }
-      .width('100%')
-      .layoutWeight(1)
+      .width(50)
+      .height(50)
+      .borderRadius(25)
+      .backgroundColor(item.direction === 'receive' ? gc('success_bg', this.themeVersion) : gc('accent_bg', this.themeVersion))
       .justifyContent(FlexAlign.Center)
-    } else {
-      List({ space: 12 }) {
-        ForEach(items, (item: HistoryRecord) => {
-          ListItem() {
-            Row() {
-              // 文件图标
-              Column() {
-                SymbolGlyph($r('sys.symbol.doc'))
-                  .fontSize(32)
-                  .fontColor([item.direction === 'receive' ? gc('success') : gc('accent')])
-              }
-              .width(52)
-              .height(52)
-              .borderRadius(12)
-              .backgroundColor(item.direction === 'receive' ? gc('success_bg') : gc('accent_bg'))
-              .justifyContent(FlexAlign.Center)
-              .margin({ right: 12 })
-              
-              Column() {
-                Text(item.fileName)
-                  .fontSize(16)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor(gc('text_primary'))
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-                
-                Row() {
-                  Text(item.deviceName)
-                    .fontSize(12)
-                    .fontColor(gc('text_secondary'))
-                  
-                  Text(' • ')
-                    .fontSize(12)
-                    .fontColor(gc('text_tertiary'))
-                  
-                  Text(this.formatSize(item.size))
-                    .fontSize(12)
-                    .fontColor(gc('text_secondary'))
-                }
-                .margin({ top: 4 })
-              }
-              .alignItems(HorizontalAlign.Start)
-              .layoutWeight(1)
-              
-              Column() {
-                Text(this.formatTime(item.time))
-                  .fontSize(11)
-                  .fontColor(gc('text_secondary'))
-                
-                Text(item.status === 'completed' ? t('completed') : t('failed'))
-                  .fontSize(11)
-                  .fontColor(item.status === 'completed' ? gc('success') : gc('error'))
-                  .margin({ top: 4 })
-                  .padding({ left: 6, right: 6, top: 2, bottom: 2 })
-                  .backgroundColor(item.status === 'completed' ? gc('success_bg') : gc('error_bg'))
-                  .borderRadius(4)
-              }
-              .alignItems(HorizontalAlign.End)
-            }
-            .width('100%')
-            .padding(14)
-            .backgroundColor(gc('bg_secondary'))
-            .borderRadius(16)
-            .onClick(() => {
-              this.openFile(item);
-            })
-          }
-        }, (item: HistoryRecord) => item.id)
+      .margin({ right: 12 })
+
+      // 详情
+      Column() {
+        Text(item.fileName || 'Unknown')
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(gc('text_primary', this.themeVersion))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        
+        Row() {
+          Text(item.deviceName)
+            .fontSize(12)
+            .fontColor(gc('text_secondary', this.themeVersion))
+          
+          Text(' • ')
+            .fontSize(12)
+            .fontColor(gc('text_tertiary', this.themeVersion))
+          
+          Text(this.formatSize(item.size))
+            .fontSize(12)
+            .fontColor(gc('text_secondary', this.themeVersion))
+        }
+        .margin({ top: 4 })
       }
-      .width('95%')
       .layoutWeight(1)
-      .margin({ top: 16 })
-      .padding({ bottom: 20 })
-      .scrollBar(BarState.Off)
+      .alignItems(HorizontalAlign.Start)
+
+      // 状态
+      Column() {
+        Text(this.formatTime(item.time))
+          .fontSize(11)
+          .fontColor(gc('text_secondary', this.themeVersion))
+          .margin({ bottom: 4 })
+        
+        Text(item.status === 'completed' ? t('completed', this.languageVersion) : t('failed', this.languageVersion))
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(item.status === 'completed' ? gc('success', this.themeVersion) : gc('error', this.themeVersion))
+          .padding({ left: 8, right: 8, top: 2, bottom: 2 })
+          .backgroundColor(item.status === 'completed' ? gc('success_bg', this.themeVersion) : gc('error_bg', this.themeVersion))
+          .borderRadius(4)
+      }
+      .alignItems(HorizontalAlign.End)
     }
+    .width('100%')
+    .padding(14)
+    .backgroundColor(gc('bg_secondary', this.themeVersion))
+    .borderRadius(16)
+    .shadow({ radius: 8, color: '#0A000000', offsetY: 4 })
+  }
+
+  private getFilteredHistory(): HistoryRecord[] {
+    return this.historyRecords.filter(t => t.direction === (this.currentTab === 0 ? 'receive' : 'send'));
   }
 }
-

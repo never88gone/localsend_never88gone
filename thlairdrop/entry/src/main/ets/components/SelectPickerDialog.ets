@@ -52,6 +52,7 @@ export interface SelectPickerParams {
 export struct SelectPickerDialog {
   @StorageProp('appTheme') currentTheme: string = 'system';
   @StorageProp('appLanguage') currentLanguage: string = 'system';
+  @StorageProp('languageVersion') languageVersion: number = 0;
   // 弹窗控制器
   controller: CustomDialogController;
   
@@ -81,7 +82,7 @@ export struct SelectPickerDialog {
       .width('100%')
       
       // 取消按钮
-      Button(t('cancel'))
+      Button(t('cancel', this.languageVersion))
         .width('100%')
         .height(44)
         .fontSize(16)

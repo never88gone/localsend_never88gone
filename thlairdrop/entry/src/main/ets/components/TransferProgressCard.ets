@@ -42,7 +42,7 @@ export struct TransferProgressCard {
             .fontColor([gc('success')])
         }
 
-        Text(this.task.direction === TransferDirection.Send ? t('tab_send') : t('tab_receive'))
+        Text(this.task.direction === TransferDirection.Send ? t('tab_send', this.languageVersion) : t('tab_receive', this.languageVersion))
           .fontSize(14)
           .fontWeight(FontWeight.Bold)
           .fontColor(gc('text_primary'))
@@ -78,7 +78,7 @@ export struct TransferProgressCard {
 
       // 文件数量和大小 (点击可展开)
       Row() {
-        Text(`${this.task.files.length} ${t('file')}`)
+        Text(`${this.task.files.length} ${t('file', this.languageVersion)}`)
           .fontSize(14)
           .fontColor(gc('text_secondary'))
         
@@ -186,7 +186,7 @@ export struct TransferProgressCard {
             .fontSize(16)
             .fontColor([gc('error')])
           
-          Text(this.task.errorMessage || t('failed'))
+          Text(this.task.errorMessage || t('failed', this.languageVersion))
             .fontSize(12)
             .fontColor(gc('error'))
             .margin({ left: 6 })
@@ -201,7 +201,7 @@ export struct TransferProgressCard {
       // 操作按钮
       Row() {
         if (this.task.state === TransferState.InProgress || this.task.state === TransferState.Pending) {
-          Button(t('cancel'))
+          Button(t('cancel', this.languageVersion))
             .fontSize(13)
             .height(32)
             .fontColor(gc('error'))
@@ -212,7 +212,7 @@ export struct TransferProgressCard {
               this.onCancel?.(this.task.id);
             })
         } else if (this.task.state === TransferState.Failed) {
-          Button(t('retry'))
+          Button(t('retry', this.languageVersion))
             .fontSize(13)
             .height(32)
             .fontColor(gc('accent'))
@@ -222,7 +222,7 @@ export struct TransferProgressCard {
               this.onRetry?.(this.task.id);
             })
         } else if (this.task.state === TransferState.Completed) {
-          Button(t('view'))
+          Button(t('view', this.languageVersion))
             .fontSize(13)
             .height(32)
             .fontColor(gc('success'))
@@ -247,7 +247,7 @@ export struct TransferProgressCard {
   @Builder StateLabel() {
     Row() {
       if (this.task.state === TransferState.Pending) {
-        Text(t('waiting'))
+        Text(t('waiting', this.languageVersion))
           .fontSize(11)
           .fontColor(gc('warning'))
           .padding({ left: 8, right: 8, top: 2, bottom: 2 })
@@ -255,14 +255,14 @@ export struct TransferProgressCard {
           .borderRadius(10)
           .transition({ type: TransitionType.Insert, opacity: 0, scale: { x: 0.8, y: 0.8 } })
       } else if (this.task.state === TransferState.InProgress) {
-        Text(t('in_progress'))
+        Text(t('in_progress', this.languageVersion))
           .fontSize(11)
           .fontColor(gc('accent'))
           .padding({ left: 8, right: 8, top: 2, bottom: 2 })
           .backgroundColor(gc('accent_bg'))
           .borderRadius(10)
       } else if (this.task.state === TransferState.Completed) {
-        Text(t('completed'))
+        Text(t('completed', this.languageVersion))
           .fontSize(11)
           .fontColor(gc('success'))
           .padding({ left: 8, right: 8, top: 2, bottom: 2 })
@@ -270,7 +270,7 @@ export struct TransferProgressCard {
           .borderRadius(10)
           .transition({ type: TransitionType.Insert, opacity: 0, scale: { x: 0.8, y: 0.8 } })
       } else if (this.task.state === TransferState.Failed) {
-        Text(t('failed'))
+        Text(t('failed', this.languageVersion))
           .fontSize(11)
           .fontColor(gc('error'))
           .padding({ left: 8, right: 8, top: 2, bottom: 2 })
@@ -278,7 +278,7 @@ export struct TransferProgressCard {
           .borderRadius(10)
           .transition({ type: TransitionType.Insert, opacity: 0, scale: { x: 0.8, y: 0.8 } })
       } else if (this.task.state === TransferState.Cancelled) {
-        Text(t('cancelled'))
+        Text(t('cancelled', this.languageVersion))
           .fontSize(11)
           .fontColor(gc('text_secondary'))
           .padding({ left: 8, right: 8, top: 2, bottom: 2 })

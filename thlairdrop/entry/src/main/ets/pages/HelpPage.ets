@@ -31,7 +31,7 @@ struct HelpPage {
             router.back();
           })
 
-          Text(t('help'))
+          Text(t('help', this.languageVersion))
             .fontSize(20)
             .fontWeight(FontWeight.Medium)
             .fontColor(gc('text_primary'))
@@ -50,26 +50,26 @@ struct HelpPage {
         Column() {
           // 应用介绍
           this.HelpSection(
-            t('app_intro_title'),
-            t('app_intro_content')
+            t('app_intro_title', this.languageVersion),
+            t('app_intro_content', this.languageVersion)
           )
 
           // 如何发送文件
           this.HelpSection(
-            t('how_to_send_title'),
-            t('how_to_send_content')
+            t('how_to_send_title', this.languageVersion),
+            t('how_to_send_content', this.languageVersion)
           )
 
           // 如何接收文件
           this.HelpSection(
-            t('how_to_receive_title'),
-            t('how_to_receive_content')
+            t('how_to_receive_title', this.languageVersion),
+            t('how_to_receive_content', this.languageVersion)
           )
 
           // 注意事项
           this.HelpSection(
-            t('notes_title'),
-            t('notes_content')
+            t('notes_title', this.languageVersion),
+            t('notes_content', this.languageVersion)
           )
         }
         .width('100%')
