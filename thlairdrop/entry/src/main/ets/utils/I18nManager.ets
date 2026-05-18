@@ -82,6 +82,12 @@ interface StringMap {
   how_to_receive_content: string;
   notes_title: string;
   notes_content: string;
+  // 接收相关
+  receive_complete: string;
+  receive_failed: string;
+  receive_start: string;
+  accept_failed: string;
+  file_count: string;
 }
 
 interface LanguageStrings {
@@ -171,7 +177,13 @@ export class I18nManager {
       how_to_receive_title: '如何接收文件',
       how_to_receive_content: '1. 确保接收功能已开启（接收页面顶部开关）\n2. 当有设备发送文件时，会收到接收请求\n3. 选择"接收"或"拒绝"\n4. 接收的文件会保存到设置的保存目录中',
       notes_title: '注意事项',
-      notes_content: '• 所有设备需要连接到同一个局域网（WiFi）\n• 确保设备之间的网络可以互相访问\n• 大文件传输可能需要较长时间，请耐心等待\n• 如遇问题，请检查网络连接和防火墙设置'
+      notes_content: '• 所有设备需要连接到同一个局域网（WiFi）\n• 确保设备之间的网络可以互相访问\n• 大文件传输可能需要较长时间，请耐心等待\n• 如遇问题，请检查网络连接和防火墙设置',
+      // 接收相关
+      receive_complete: '文件接收完成！',
+      receive_failed: '接收失败',
+      receive_start: '开始接收文件...',
+      accept_failed: '接受请求失败',
+      file_count: '个文件'
     },
     en: {
       tab_receive: 'Receive',
@@ -253,7 +265,13 @@ export class I18nManager {
       how_to_receive_title: 'How to Receive Files',
       how_to_receive_content: '1. Ensure receiving is enabled (toggle on the Receive page)\n2. When a device sends files, you will receive a request\n3. Choose "Accept" or "Reject"\n4. Received files will be saved to the configured directory',
       notes_title: 'Notes',
-      notes_content: '• All devices must be connected to the same local network (WiFi)\n• Ensure devices can communicate with each other on the network\n• Large files may take longer to transfer, please be patient\n• If issues occur, check network connection and firewall settings'
+      notes_content: '• All devices must be connected to the same local network (WiFi)\n• Ensure devices can communicate with each other on the network\n• Large files may take longer to transfer, please be patient\n• If issues occur, check network connection and firewall settings',
+      // 接收相关
+      receive_complete: 'File received!',
+      receive_failed: 'Receive failed',
+      receive_start: 'Starting receive...',
+      accept_failed: 'Accept failed',
+      file_count: 'files'
     }
   };
 
@@ -266,6 +284,10 @@ export class I18nManager {
   static getString(key: string, languageVersion?: number): string {
     // 如果 key 为空，直接返回
     if (!key) return '';
+    
+    // 建立 languageVersion 的响应式依赖
+    // 当 languageVersion 变化时，会触发重新计算
+    const _ = languageVersion;
     
     // 如果 key 本身就是我们要翻译的值之一（针对动态保存目录）
     const specialMap: Record<string, string> = {

@@ -25,8 +25,10 @@ export struct SendTab {
   @State refreshKey: number = 0;
   @Link devices: Device[];
   
+  // 语言版本变化时触发UI刷新
   onRefreshTriggered() {
-    this.refreshKey++;
+    // 强制触发UI重新渲染
+    this.refreshKey = this.themeVersion + this.languageVersion;
   }
   @State selectedFilesCount: number = 0;
   @State selectedFiles: SelectedFile[] = [];

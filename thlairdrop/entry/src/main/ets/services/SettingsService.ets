@@ -20,7 +20,7 @@ export interface AppSettings {
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   colorTheme: 'blue',
-  language: 'zh',
+  language: 'system', // 默认跟随系统
   animationEnabled: true,
   quickSaveMode: 0,
   saveDir: '下载',

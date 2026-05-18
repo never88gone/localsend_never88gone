@@ -2,21 +2,10 @@ import promptAction from '@ohos.promptAction';
 import hilog from '@ohos.hilog';
 import common from '@ohos.app.ability.common';
 import router from '@ohos.router';
-import { SettingsService, AppSettings } from '../services/SettingsService';
+import { SettingsService } from '../services/SettingsService';
 import { SelectPickerDialog, SelectOption } from './SelectPickerDialog';
 import { gc, ThemeManager } from '../utils/ThemeManager';
 import { I18nManager, t } from '../utils/I18nManager';
-
-// 设置项接口
-interface SettingsItem {
-  label: string;
-  value: string;
-  key: string;
-  isToggle?: boolean;
-  isOn?: boolean;
-  onClick?: () => void;
-}
-
 
 // 色彩选项
 const getColorOptions = (lv?: number): SelectOption[] => [
@@ -57,17 +46,17 @@ export struct SettingsTab {
   @Link quickSaveMode: number;
   @Link animationEnabled: boolean;
   @Link port: number;
+  @Link saveDir: string;
   
-  // 设置服务
+  // 设置服务 (由 Index.ets 初始化)
   private settingsService: SettingsService = SettingsService.getInstance();
   private context: common.UIAbilityContext | null = null;
   
-  // 设置状态
+  // 设置状态 (通过 Index.ets 同步)
   @StorageLink('appTheme') theme: string = 'system';
   @StorageLink('appColorTheme') colorTheme: string = 'blue';
   @StorageLink('appLanguage') language: string = 'system';
   @State encryptionEnabled: boolean = true;
-  @Link saveDir: string;
   @Watch('onRefreshTriggered') @StorageProp('themeVersion') themeVersion: number = 0;
   @Watch('onRefreshTriggered') @StorageProp('languageVersion') languageVersion: number = 0;
   @State refreshKey: number = 0;
@@ -81,12 +70,6 @@ export struct SettingsTab {
   @State showPortDialog: boolean = false;
   @State tempAliasName: string = '';
   @State tempPort: string = '';
-  
-  // 选择弹窗状态
-  @State showLanguagePicker: boolean = false;
-  @State showQuickSavePicker: boolean = false;
-  @State showSaveDirPicker: boolean = false;
-  
   
   // 色彩弹窗控制器
   private colorThemeDialogController: CustomDialogController = new CustomDialogController({
@@ -137,60 +120,24 @@ export struct SettingsTab {
   });
   
   aboutToAppear(): void {
-    // 获取 context
     this.context = getContext(this) as common.UIAbilityContext;
-    // 初始化并加载保存的设置
-    this.initAndLoadSettings();
   }
   
-  private async initAndLoadSettings(): Promise<void> {
-    await this.settingsService.init(this.context!);
-    this.loadSettings();
-  }
-  
-  // 加载设置
-  private loadSettings(): void {
-    this.settingsService.getSettings().then((settings: AppSettings) => {
-      this.theme = settings.theme;
-      this.colorTheme = settings.colorTheme;
-      this.language = settings.language;
-      this.animationEnabled = settings.animationEnabled;
-      this.quickSaveMode = settings.quickSaveMode;
-      this.saveDir = settings.saveDir;
-      this.port = settings.port;
-      this.encryptionEnabled = settings.encryptionEnabled;
-      this.aliasName = settings.aliasName;
-      
-      // 应用主题
-      this.applyTheme(this.theme);
-      this.applyColorTheme(this.colorTheme);
-      this.applyLanguage(this.language);
-    }).catch((err: Error) => {
-      hilog.error(0x0000, 'SettingsTab', `Failed to load settings: ${err.message}`);
-    });
-  }
-  
-  // 应用主题
+  // 应用主题变化并广播
   private applyTheme(theme: string): void {
     AppStorage.setOrCreate('appTheme', theme);
     ThemeManager.incrementThemeVersion();
-    hilog.info(0x0000, 'SettingsTab', `Theme applied: ${theme}`);
   }
 
-  // 应用色彩
   private applyColorTheme(color: string): void {
     AppStorage.setOrCreate('appColorTheme', color);
     ThemeManager.incrementThemeVersion();
-    hilog.info(0x0000, 'SettingsTab', `Color Theme applied: ${color}`);
   }
   
-  // 应用语言
   private applyLanguage(language: string): void {
     AppStorage.setOrCreate('appLanguage', language);
     I18nManager.incrementLanguageVersion();
-    hilog.info(0x0000, 'SettingsTab', `Language applied: ${language}`);
   }
-  
   
   // 色彩选择回调
   private onColorThemeSelected(value: string): void {
@@ -385,7 +332,7 @@ export struct SettingsTab {
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
             .fontColor(gc('text_primary', this.themeVersion))
-          Text(t('completed', this.languageVersion) + ': 1.0.0') // 使用已有的翻译 key 占位
+          Text('v1.0.0')
             .fontSize(14)
             .fontColor(gc('text_secondary', this.themeVersion))
             .margin({ top: 4 })

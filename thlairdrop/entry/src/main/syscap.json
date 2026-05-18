@@ -1,0 +1,16 @@
+{
+  "devices": {
+    "general": ["phone", "tablet", "2in1", "tv"]
+  },
+  "production": {
+    "removedSysCaps": [
+      "SystemCapability.Multimedia.Media.AVTranscoder",
+      "SystemCapability.DistributedHardware.DeviceManager",
+      "SystemCapability.Communication.Bluetooth.Core",
+      "SystemCapability.Communication.WiFi.P2P",
+      "SystemCapability.DistributedDataManager.KVStore.Core",
+      "SystemCapability.DistributedDataManager.DataObject.DistributedObject",
+      "SystemCapability.Multimedia.Drm.Core"
+    ]
+  }
+}

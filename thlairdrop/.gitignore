@@ -10,3 +10,5 @@
 /.clang-tidy
 **/.test
 /.appanalyzer
+publish_to_appgallery.sh
+PUBLISH_GUIDE.md

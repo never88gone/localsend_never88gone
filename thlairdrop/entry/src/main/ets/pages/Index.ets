@@ -1,10 +1,12 @@
 import { gc, ThemeManager } from '../utils/ThemeManager';
-import { t } from '../utils/I18nManager';
+import { I18nManager, t } from '../utils/I18nManager';
 import { SendTab } from '../components/SendTab';
 import { ReceiveTab } from '../components/ReceiveTab';
 import { SettingsTab } from '../components/SettingsTab';
-import { localSendService, Device, NetworkInfo } from '../service/LocalSendService';
+import { localSendService, Device } from '../service/LocalSendService';
+import { SettingsService, AppSettings } from '../services/SettingsService';
 import common from '@ohos.app.ability.common';
+import hilog from '@ohos.hilog';
 
 @Entry
 @Component
@@ -19,8 +21,11 @@ struct Index {
   @StorageLink('appAnimationEnabled') animationEnabled: boolean = true;
   @StorageLink('appPort') port: number = 53317;
   @StorageLink('appSaveDir') saveDir: string = '下载';
-  @StorageLink('appIsServerRunning') isServerRunning: boolean = true;
+  @Watch('onServerToggle') @StorageLink('appIsServerRunning') isServerRunning: boolean = true;
   @StorageLink('appLocalIps') localIps: string[] = [];
+  @StorageLink('appTheme') theme: string = 'system';
+  @StorageLink('appColorTheme') colorTheme: string = 'blue';
+  @StorageLink('appLanguage') language: string = 'system';
   
   // 动画角度
   @State animationAngle: number = 0;
@@ -33,47 +38,127 @@ struct Index {
   onRefreshTriggered() {
     this.refreshKey++;
   }
+
+  onServerToggle() {
+    this.manageServer();
+  }
   
   // 显示高级信息
   @State showAdvancedInfo: boolean = false;
 
   private context = getContext(this) as common.UIAbilityContext;
+  private settingsService: SettingsService = SettingsService.getInstance();
+  private scanInterval: number = 0;
+  private announceInterval: number = 0;
 
-  aboutToAppear() {
-    // 注册设备发现回调 (解析 JSON 字符串)
+  async aboutToAppear() {
+    // 1. 确保设置已加载（EntryAbility已预加载，这里确保Service初始化）
+    await this.ensureSettingsLoaded();
+
+    // 2. 注册设备发现回调
     localSendService.setDeviceCallback((deviceJson: string) => {
       try {
         const devices = JSON.parse(deviceJson) as Device[];
         this.devices = devices;
       } catch (e) {
-        console.error('Failed to parse device JSON:', e);
+        hilog.error(0x0000, 'Index', 'Failed to parse device JSON: ' + (e as Error).message);
       }
     });
 
-    // 启动动画定时器
+    // 3. 启动动画定时器
     setInterval(() => {
       if (this.isServerRunning) {
         this.animationAngle = (this.animationAngle + 2) % 360;
       }
     }, 30);
 
-    // 获取并定时更新本地网络信息
-    this.updateNetworkInfo();
-    setInterval(() => {
-      this.updateNetworkInfo();
-    }, 5000);
+    // 4. 自动管理服务器生命周期
+    this.manageServer();
 
-    // 初始扫描
-    localSendService.scanDevices();
+    // 5. 启动自动发现定时器
+    this.startAutoDiscovery();
   }
 
+  /**
+   * 确保设置已加载
+   * EntryAbility已提前加载设置到AppStorage，这里只需确保Service初始化
+   */
+  private async ensureSettingsLoaded(): Promise<void> {
+    // 确保SettingsService已初始化
+    if (!this.settingsService.getContext()) {
+      await this.settingsService.init(this.context);
+    }
+    
+    // 触发一次UI刷新以确保响应式更新
+    ThemeManager.incrementThemeVersion();
+    I18nManager.incrementLanguageVersion();
+    
+    hilog.info(0x0000, 'Index', 'Settings ensured, theme=%{public}s, colorTheme=%{public}s', 
+      this.theme, this.colorTheme);
+  }
+
+  aboutToDisappear() {
+    this.stopAutoDiscovery();
+    localSendService.stop();
+  }
+
+  /**
+   * 根据状态管理服务器启动/停止
+   */
+  private manageServer() {
+    if (this.isServerRunning) {
+      const success = localSendService.start(this.aliasName, this.port);
+      if (success) {
+        this.updateNetworkInfo();
+      }
+    } else {
+      localSendService.stop();
+    }
+  }
+
+  /**
+   * 更新本地网络信息
+   */
   private updateNetworkInfo() {
     const info = localSendService.getNetworkInfo();
     if (info && info.ip) {
-      // 本地 IP 可能有多个，这里简单处理，实际可根据 native 返回解析
-      if (!this.localIps.includes(info.ip)) {
-        this.localIps = [info.ip];
+      this.localIps = [info.ip];
+    }
+  }
+
+  /**
+   * 启动自动发现
+   */
+  private startAutoDiscovery() {
+    this.stopAutoDiscovery();
+    
+    // 立即执行一次
+    localSendService.scanDevices();
+    
+    // 定时扫描 (10秒一次)
+    this.scanInterval = setInterval(() => {
+      if (this.currentIndex === 1) { // 仅在发送页活跃时扫描
+        localSendService.scanDevices();
       }
+    }, 10000);
+
+    // 定时发送公告 (15秒一次)，让别人发现我
+    this.announceInterval = setInterval(() => {
+      if (this.isServerRunning) {
+        localSendService.sendAnnouncement();
+      }
+    }, 15000);
+  }
+
+  /**
+   * 停止自动发现
+   */
+  private stopAutoDiscovery() {
+    if (this.scanInterval) {
+      clearInterval(this.scanInterval);
+    }
+    if (this.announceInterval) {
+      clearInterval(this.announceInterval);
     }
   }
 
@@ -94,6 +179,10 @@ struct Index {
     .justifyContent(FlexAlign.Center)
     .onClick(() => {
       this.currentIndex = targetIndex;
+      // 切换到发送页时立即扫描一次
+      if (targetIndex === 1) {
+        localSendService.scanDevices();
+      }
     })
   }
 
@@ -141,5 +230,11 @@ struct Index {
     .width('100%')
     .height('100%')
     .backgroundColor(gc('bg_primary', this.themeVersion))
+    // 监听服务器开关变化
+    .onVisibleAreaChange([0.0, 1.0], (isVisible: boolean, currentRatio: number) => {
+      if (isVisible) {
+        this.manageServer();
+      }
+    })
   }
 }

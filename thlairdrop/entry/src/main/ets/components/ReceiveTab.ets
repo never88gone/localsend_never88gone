@@ -131,16 +131,16 @@ export struct ReceiveTab {
 
     // 注册回调
     fileTransferManager.registerCallback(task.id, {
-      onProgress: (t: TransferTask) => {
+      onProgress: (task: TransferTask) => {
         this.updateTasks();
       },
-      onComplete: (t: TransferTask) => {
+      onComplete: (task: TransferTask) => {
         this.updateTasks();
-        promptAction.showToast({ message: '文件接收完成！' });
+        promptAction.showToast({ message: t('receive_complete', this.languageVersion) });
       },
-      onError: (t: TransferTask, error: string) => {
+      onError: (task: TransferTask, error: string) => {
         this.updateTasks();
-        promptAction.showToast({ message: `接收失败: ${error}` });
+        promptAction.showToast({ message: `${t('receive_failed', this.languageVersion)}: ${error}` });
       }
     });
 
@@ -148,9 +148,9 @@ export struct ReceiveTab {
     const success = await fileTransferManager.acceptReceive(requestId, actualDir);
     if (success) {
       this.pendingRequests.delete(requestId);
-      promptAction.showToast({ message: '开始接收文件...' });
+      promptAction.showToast({ message: t('receive_start', this.languageVersion) });
     } else {
-      promptAction.showToast({ message: '接受请求失败' });
+      promptAction.showToast({ message: t('accept_failed', this.languageVersion) });
     }
   }
 
@@ -281,7 +281,7 @@ export struct ReceiveTab {
                   .width('100%')
                   .margin({ bottom: 8 })
 
-                  Text(`${entry[1].files.length} 个文件`)
+                  Text(`${entry[1].files.length} ${t('file_count', this.languageVersion)}`)
                     .fontSize(14)
                     .fontColor(gc('text_secondary', this.themeVersion))
                     .width('100%')
