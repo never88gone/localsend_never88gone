@@ -12,7 +12,7 @@ export struct ServerStatus {
   @StorageProp('appLanguage') currentLanguage: string = 'system';
   @State isRunning: boolean = false;
   @State networkInfo: NetworkInfo | null = null;
-  @Prop alias: string = 'HarmonyOS Device';
+  @Prop alias: string = '糖葫芦投送';
   @Prop port: number = 53317;
   
   // 回调

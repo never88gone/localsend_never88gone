@@ -102,12 +102,12 @@ export class FileTransferManager {
    */
   private initCallbacks(): void {
     // 注册 NAPI 进度回调
-    localSendService.setProgressCallback((id: string, progress: number) => {
+    localSendService.registerProgressCallback((id: string, progress: number) => {
       this.updateProgress(id, progress);
     });
 
     // 注册 NAPI 文件请求回调
-    localSendService.setFileRequestCallback(async (json: string) => {
+    localSendService.registerFileCallback(async (json: string) => {
       try {
         const info = JSON.parse(json) as FileRequestInfo;
         
@@ -258,7 +258,7 @@ export class FileTransferManager {
   /**
    * 解析保存路径标签为真实绝对路径
    */
-  private resolveSavePath(label: string): string {
+  public resolveSavePath(label: string): string {
     const context = SettingsService.getInstance().getContext();
     if (!context) {
       return '';
@@ -272,7 +272,13 @@ export class FileTransferManager {
     const fullPath = `${baseDir}/${subDir}`;
     
     try {
-      if (!fs.accessSync(fullPath)) {
+      let exists = false;
+      try {
+        exists = fs.accessSync(fullPath);
+      } catch (err) {
+        exists = false;
+      }
+      if (!exists) {
         fs.mkdirSync(fullPath);
       }
     } catch (e) {
@@ -470,6 +476,12 @@ export class FileTransferManager {
   private updateProgress(taskId: string, progress: number): void {
     const task = this.tasks.get(taskId);
     if (!task) return;
+
+    // 处理失败状态 (-1)
+    if (progress === -1) {
+      this.updateTaskState(task, TransferState.Failed, '传输过程中出错');
+      return;
+    }
 
     // 处理取消状态 (101)
     if (progress === 101) {

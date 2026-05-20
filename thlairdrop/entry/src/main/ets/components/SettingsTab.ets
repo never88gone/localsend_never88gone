@@ -6,6 +6,7 @@ import { SettingsService } from '../services/SettingsService';
 import { SelectPickerDialog, SelectOption } from './SelectPickerDialog';
 import { gc, ThemeManager } from '../utils/ThemeManager';
 import { I18nManager, t } from '../utils/I18nManager';
+import { BuildInfo } from '../utils/BuildInfo';
 
 // 色彩选项
 const getColorOptions = (lv?: number): SelectOption[] => [
@@ -56,6 +57,7 @@ export struct SettingsTab {
   @StorageLink('appTheme') theme: string = 'system';
   @StorageLink('appColorTheme') colorTheme: string = 'blue';
   @StorageLink('appLanguage') language: string = 'system';
+  @StorageLink('appPinCode') pinCode: string = '';
   @State encryptionEnabled: boolean = true;
   @Watch('onRefreshTriggered') @StorageProp('themeVersion') themeVersion: number = 0;
   @Watch('onRefreshTriggered') @StorageProp('languageVersion') languageVersion: number = 0;
@@ -68,54 +70,56 @@ export struct SettingsTab {
   // 弹窗状态
   @State showAliasDialog: boolean = false;
   @State showPortDialog: boolean = false;
+  @State showPinCodeDialog: boolean = false;
   @State tempAliasName: string = '';
   @State tempPort: string = '';
+  @State tempPinCode: string = '';
   
   // 色彩弹窗控制器
   private colorThemeDialogController: CustomDialogController = new CustomDialogController({
     builder: SelectPickerDialog({
-      title: t('color_title', this.languageVersion),
-      options: getColorOptions(this.languageVersion),
+      dialogType: 'color',
       currentValue: this.colorTheme,
       onSelected: (value: string): void => this.onColorThemeSelected(value)
     }),
     autoCancel: true,
+    customStyle: true,
     alignment: DialogAlignment.Center
   });
   
   // 语言弹窗控制器
   private languageDialogController: CustomDialogController = new CustomDialogController({
     builder: SelectPickerDialog({
-      title: t('language_title', this.languageVersion),
-      options: getLanguageOptions(this.languageVersion),
+      dialogType: 'language',
       currentValue: this.language,
       onSelected: (value: string): void => this.onLanguageSelected(value)
     }),
     autoCancel: true,
+    customStyle: true,
     alignment: DialogAlignment.Center
   });
   
   // 快速保存弹窗控制器
   private quickSaveDialogController: CustomDialogController = new CustomDialogController({
     builder: SelectPickerDialog({
-      title: t('quick_save', this.languageVersion),
-      options: getQuickSaveOptions(this.languageVersion),
+      dialogType: 'quick_save',
       currentValue: this.quickSaveMode.toString(),
       onSelected: (value: string): void => this.onQuickSaveSelected(value)
     }),
     autoCancel: true,
+    customStyle: true,
     alignment: DialogAlignment.Center
   });
   
   // 保存目录弹窗控制器
   private saveDirDialogController: CustomDialogController = new CustomDialogController({
     builder: SelectPickerDialog({
-      title: t('save_dir', this.languageVersion),
-      options: getSaveDirOptions(this.languageVersion),
+      dialogType: 'save_dir',
       currentValue: this.saveDir,
       onSelected: (value: string): void => this.onSaveDirSelected(value)
     }),
     autoCancel: true,
+    customStyle: true,
     alignment: DialogAlignment.Center
   });
   
@@ -179,177 +183,223 @@ export struct SettingsTab {
   }
 
   build() {
-    Scroll() {
-      Column() {
+    Column() {
+      // 顶部固定标题
+      Row() {
         Text(t('tab_settings', this.languageVersion))
           .fontSize(28)
           .fontWeight(FontWeight.Bold)
           .fontColor(gc('text_primary', this.themeVersion))
-          .width('100%')
-          .padding({ left: 32, top: 20, bottom: 24 })
-
-        // 常规设置
-        Column() {
-          Text(t('general_settings', this.languageVersion))
-            .fontSize(14)
-            .fontColor(gc('text_secondary', this.themeVersion))
-            .width('100%')
-            .padding({ left: 32, bottom: 8 })
-
-          Column() {
-            SettingsRowComponent({
-              label: t('color_title', this.languageVersion),
-              value: (getColorOptions(this.languageVersion).find((o: SelectOption): boolean => o.value === this.colorTheme)?.label || this.colorTheme) as string,
-              themeVersion: this.themeVersion,
-              languageVersion: this.languageVersion,
-              onItemClick: (): void => { this.colorThemeDialogController.open(); }
-            })
-            SettingsRowComponent({
-              label: t('language_title', this.languageVersion),
-              value: (getLanguageOptions(this.languageVersion).find((o: SelectOption): boolean => o.value === this.language)?.label || this.language) as string,
-              themeVersion: this.themeVersion,
-              languageVersion: this.languageVersion,
-              onItemClick: (): void => { this.languageDialogController.open(); }
-            })
-            SettingsRowComponent({
-              label: t('animation_title', this.languageVersion),
-              isToggle: true,
-              isOn: this.animationEnabled,
-              themeVersion: this.themeVersion,
-              languageVersion: this.languageVersion,
-              onItemClick: (): void => { this.toggleAnimation(); }
-            })
-          }
-          .width('90%')
-          .backgroundColor(gc('bg_secondary', this.themeVersion))
-          .borderRadius(16)
-          .shadow({ radius: 8, color: '#0A000000', offsetY: 4 })
-        }
-        .width('100%')
-        .margin({ bottom: 24 })
-
-        // 接收设置
-        Column() {
-          Text(t('receive_settings', this.languageVersion))
-            .fontSize(14)
-            .fontColor(gc('text_secondary', this.themeVersion))
-            .width('100%')
-            .padding({ left: 32, bottom: 8 })
-
-          Column() {
-            SettingsRowComponent({
-              label: t('quick_save', this.languageVersion),
-              value: (getQuickSaveOptions(this.languageVersion).find((o: SelectOption): boolean => o.value === this.quickSaveMode.toString())?.label || this.quickSaveMode.toString()) as string,
-              themeVersion: this.themeVersion,
-              languageVersion: this.languageVersion,
-              onItemClick: (): void => { this.quickSaveDialogController.open(); }
-            })
-            SettingsRowComponent({
-              label: t('save_dir', this.languageVersion),
-              value: t(this.saveDir, this.languageVersion),
-              themeVersion: this.themeVersion,
-              languageVersion: this.languageVersion,
-              onItemClick: (): void => { this.saveDirDialogController.open(); }
-            })
-          }
-          .width('90%')
-          .backgroundColor(gc('bg_secondary', this.themeVersion))
-          .borderRadius(16)
-          .shadow({ radius: 8, color: '#0A000000', offsetY: 4 })
-        }
-        .width('100%')
-        .margin({ bottom: 24 })
-
-        // 网络设置
-        Column() {
-          Text(t('network_settings', this.languageVersion))
-            .fontSize(14)
-            .fontColor(gc('text_secondary', this.themeVersion))
-            .width('100%')
-            .padding({ left: 32, bottom: 8 })
-
-          Column() {
-            SettingsRowComponent({
-              label: t('device_alias', this.languageVersion),
-              value: this.aliasName,
-              themeVersion: this.themeVersion,
-              languageVersion: this.languageVersion,
-              onItemClick: (): void => { this.showAliasInputDialog(); }
-            })
-            SettingsRowComponent({
-              label: t('device_port', this.languageVersion),
-              value: this.port.toString(),
-              themeVersion: this.themeVersion,
-              languageVersion: this.languageVersion,
-              onItemClick: (): void => { this.showPortInputDialog(); }
-            })
-          }
-          .width('90%')
-          .backgroundColor(gc('bg_secondary', this.themeVersion))
-          .borderRadius(16)
-          .shadow({ radius: 8, color: '#0A000000', offsetY: 4 })
-        }
-        .width('100%')
-        .margin({ bottom: 24 })
-
-        // 关于
-        Column() {
-          Text(t('about_title', this.languageVersion))
-            .fontSize(14)
-            .fontColor(gc('text_secondary', this.themeVersion))
-            .width('100%')
-            .padding({ left: 32, bottom: 8 })
-
-          Column() {
-            SettingsRowComponent({
-              label: t('privacy_policy', this.languageVersion),
-              themeVersion: this.themeVersion,
-              languageVersion: this.languageVersion,
-              onItemClick: (): void => { this.openPrivacyPolicy(); }
-            })
-            SettingsRowComponent({
-              label: t('third_party', this.languageVersion),
-              themeVersion: this.themeVersion,
-              languageVersion: this.languageVersion,
-              onItemClick: (): void => { router.pushUrl({ url: 'pages/ThirdPartyLicenses' }); }
-            })
-          }
-          .width('90%')
-          .backgroundColor(gc('bg_secondary', this.themeVersion))
-          .borderRadius(16)
-          .shadow({ radius: 8, color: '#0A000000', offsetY: 4 })
-        }
-        .width('100%')
-        .margin({ bottom: 24 })
-
-        // 版本信息
-        Column() {
-          Image($r('app.media.app_icon'))
-            .width(80).height(80)
-            .borderRadius(16)
-            .margin({ top: 20, bottom: 12 })
-          Text(t('app_name', this.languageVersion))
-            .fontSize(18)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(gc('text_primary', this.themeVersion))
-          Text('v1.0.0')
-            .fontSize(14)
-            .fontColor(gc('text_secondary', this.themeVersion))
-            .margin({ top: 4 })
-          Text(t('copy_right', this.languageVersion))
-            .fontSize(12)
-            .fontColor(gc('text_tertiary', this.themeVersion))
-            .margin({ top: 8 })
-        }
-        .width('100%')
-        .padding({ bottom: 40 })
       }
       .width('100%')
+      .padding({ left: 16, right: 16, top: 16, bottom: 16 })
+
+      // 可滚动的设置列表
+      Scroll() {
+        Column() {
+          // 常规设置
+          Column() {
+            Text(t('general_settings', this.languageVersion))
+              .fontSize(14)
+              .fontColor(gc('text_secondary', this.themeVersion))
+              .width('100%')
+              .padding({ left: 0, bottom: 8 })
+
+            Column() {
+              SettingsRowComponent({
+                label: t('color_title', this.languageVersion),
+                value: (getColorOptions(this.languageVersion).find((o: SelectOption): boolean => o.value === this.colorTheme)?.label || this.colorTheme) as string,
+                themeVersion: this.themeVersion,
+                languageVersion: this.languageVersion,
+                onItemClick: (): void => { this.colorThemeDialogController.open(); }
+              })
+              SettingsRowComponent({
+                label: t('language_title', this.languageVersion),
+                value: (getLanguageOptions(this.languageVersion).find((o: SelectOption): boolean => o.value === this.language)?.label || this.language) as string,
+                themeVersion: this.themeVersion,
+                languageVersion: this.languageVersion,
+                onItemClick: (): void => { this.languageDialogController.open(); }
+              })
+              SettingsRowComponent({
+                label: t('animation_title', this.languageVersion),
+                isToggle: true,
+                isOn: this.animationEnabled,
+                themeVersion: this.themeVersion,
+                languageVersion: this.languageVersion,
+                onItemClick: (): void => { this.toggleAnimation(); }
+              })
+            }
+            .width('100%')
+            .backgroundColor(gc('bg_secondary', this.themeVersion))
+            .borderRadius(16)
+            .shadow({ radius: 4, color: '#05000000', offsetY: 2 })
+            .clip(true)
+          }
+          .width('100%')
+          .margin({ bottom: 24 })
+
+          // 接收设置
+          Column() {
+            Text(t('receive_settings', this.languageVersion))
+              .fontSize(14)
+              .fontColor(gc('text_secondary', this.themeVersion))
+              .width('100%')
+              .padding({ left: 0, bottom: 8 })
+
+            Column() {
+              SettingsRowComponent({
+                label: t('quick_save', this.languageVersion),
+                value: (getQuickSaveOptions(this.languageVersion).find((o: SelectOption): boolean => o.value === this.quickSaveMode.toString())?.label || this.quickSaveMode.toString()) as string,
+                themeVersion: this.themeVersion,
+                languageVersion: this.languageVersion,
+                onItemClick: (): void => { this.quickSaveDialogController.open(); }
+              })
+              SettingsRowComponent({
+                label: t('save_dir', this.languageVersion),
+                value: t(this.saveDir, this.languageVersion),
+                themeVersion: this.themeVersion,
+                languageVersion: this.languageVersion,
+                onItemClick: (): void => { this.saveDirDialogController.open(); }
+              })
+            }
+            .width('100%')
+            .backgroundColor(gc('bg_secondary', this.themeVersion))
+            .borderRadius(16)
+            .shadow({ radius: 4, color: '#05000000', offsetY: 2 })
+            .clip(true)
+          }
+          .width('100%')
+          .margin({ bottom: 24 })
+
+          // 设备设置
+          Column() {
+            Text(t('device_settings', this.languageVersion))
+              .fontSize(14)
+              .fontColor(gc('text_secondary', this.themeVersion))
+              .width('100%')
+              .padding({ left: 0, bottom: 8 })
+
+            Column() {
+              SettingsRowComponent({
+                label: t('device_alias', this.languageVersion),
+                value: this.aliasName,
+                themeVersion: this.themeVersion,
+                languageVersion: this.languageVersion,
+                onItemClick: (): void => { this.showAliasDialog = true; }
+              })
+              SettingsRowComponent({
+                label: t('device_port', this.languageVersion),
+                value: this.port.toString(),
+                themeVersion: this.themeVersion,
+                languageVersion: this.languageVersion,
+                onItemClick: (): void => { this.showPortDialog = true; }
+              })
+              SettingsRowComponent({
+                label: t('pin_code', this.languageVersion),
+                value: this.pinCode || t('pin_code_disabled', this.languageVersion),
+                themeVersion: this.themeVersion,
+                languageVersion: this.languageVersion,
+                onItemClick: (): void => { this.showPinCodeDialog = true; }
+              })
+            }
+            .width('100%')
+            .backgroundColor(gc('bg_secondary', this.themeVersion))
+            .borderRadius(16)
+            .shadow({ radius: 4, color: '#05000000', offsetY: 2 })
+            .clip(true)
+          }
+          .width('100%')
+          .margin({ bottom: 24 })
+
+          // 隐私与安全
+          Column() {
+            Text(t('privacy_security', this.languageVersion))
+              .fontSize(14)
+              .fontColor(gc('text_secondary', this.themeVersion))
+              .width('100%')
+              .padding({ left: 0, bottom: 8 })
+
+            Column() {
+              SettingsRowComponent({
+                label: t('privacy_policy', this.languageVersion),
+                themeVersion: this.themeVersion,
+                languageVersion: this.languageVersion,
+                onItemClick: (): void => { router.pushUrl({ url: 'pages/PrivacyPolicy' }); }
+              })
+              SettingsRowComponent({
+                label: t('third_party', this.languageVersion),
+                themeVersion: this.themeVersion,
+                languageVersion: this.languageVersion,
+                onItemClick: (): void => { router.pushUrl({ url: 'pages/ThirdPartyLicenses' }); }
+              })
+            }
+            .width('100%')
+            .backgroundColor(gc('bg_secondary', this.themeVersion))
+            .borderRadius(16)
+            .shadow({ radius: 4, color: '#05000000', offsetY: 2 })
+            .clip(true)
+          }
+          .width('100%')
+          .margin({ bottom: 24 })
+
+          // 联系与社区
+          Column() {
+            Text(t('contact_community', this.languageVersion))
+              .fontSize(14)
+              .fontColor(gc('text_secondary', this.themeVersion))
+              .width('100%')
+              .padding({ left: 0, bottom: 8 })
+
+            Column() {
+              SettingsRowComponent({
+                label: t('contact_community', this.languageVersion),
+                themeVersion: this.themeVersion,
+                languageVersion: this.languageVersion,
+                onItemClick: (): void => { router.pushUrl({ url: 'pages/ContactCommunity' }); }
+              })
+            }
+            .width('100%')
+            .backgroundColor(gc('bg_secondary', this.themeVersion))
+            .borderRadius(16)
+            .shadow({ radius: 4, color: '#05000000', offsetY: 2 })
+            .clip(true)
+          }
+          .width('100%')
+          .margin({ bottom: 24 })
+
+          // 版本信息
+          Column() {
+            Image($r('app.media.app_icon'))
+              .width(80).height(80)
+              .borderRadius(16)
+              .margin({ top: 20, bottom: 12 })
+            Text(t('app_name', this.languageVersion))
+              .fontSize(18)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(gc('text_primary', this.themeVersion))
+            Text(`v${BuildInfo.VERSION_NAME} (${BuildInfo.BUILD_NUMBER})`)
+              .fontSize(14)
+              .fontColor(gc('text_secondary', this.themeVersion))
+              .margin({ top: 4 })
+            Text(t('copy_right', this.languageVersion))
+              .fontSize(12)
+              .fontColor(gc('text_tertiary', this.themeVersion))
+              .margin({ top: 8 })
+          }
+          .width('100%')
+          .padding({ bottom: 40 })
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16 })
+      }
+      .width('100%')
+      .layoutWeight(1)
+      .scrollBar(BarState.Off)
+      .align(Alignment.Top)
+      .key(`settings_scroll_${this.refreshKey}`)
     }
     .width('100%')
     .height('100%')
-    .scrollBar(BarState.Off)
-    .key(`settings_scroll_${this.refreshKey}`)
     .backgroundColor(gc('bg_primary', this.themeVersion))
     .bindSheet(this.showAliasDialog, this.AliasInputDialog(), {
       height: 200,
@@ -357,6 +407,11 @@ export struct SettingsTab {
       dragBar: true
     })
     .bindSheet(this.showPortDialog, this.PortInputDialog(), {
+      height: 200,
+      backgroundColor: gc('bg_secondary', this.themeVersion),
+      dragBar: true
+    })
+    .bindSheet(this.showPinCodeDialog, this.PinCodeInputDialog(), {
       height: 200,
       backgroundColor: gc('bg_secondary', this.themeVersion),
       dragBar: true
@@ -455,6 +510,58 @@ export struct SettingsTab {
     .padding(16)
   }
 
+  // PIN 码输入弹窗
+  @Builder PinCodeInputDialog() {
+    Column() {
+      Text(t('change_pin_code', this.languageVersion))
+        .fontSize(18)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(gc('text_primary', this.themeVersion))
+        .margin({ top: 16, bottom: 16 })
+      
+      TextInput({ text: this.tempPinCode, placeholder: t('input_pin_code', this.languageVersion) })
+        .width('90%')
+        .height(48)
+        .onChange((value: string): void => {
+          this.tempPinCode = value;
+        })
+      
+      Button(t('random_generate', this.languageVersion))
+        .fontSize(14)
+        .fontColor(gc('accent', this.themeVersion))
+        .backgroundColor(Color.Transparent)
+        .margin({ top: 12 })
+        .onClick((): void => {
+          const randomPin = Math.floor(1000 + Math.random() * 9000).toString();
+          this.tempPinCode = randomPin;
+        })
+      
+      Row() {
+        Button(t('cancel', this.languageVersion))
+          .width('40%')
+          .backgroundColor(gc('bg_primary', this.themeVersion))
+          .fontColor(gc('text_primary', this.themeVersion))
+          .onClick((): void => {
+            this.showPinCodeDialog = false;
+          })
+        
+        Button(t('confirm', this.languageVersion))
+          .width('40%')
+          .onClick((): void => {
+            this.pinCode = this.tempPinCode.trim();
+            this.settingsService.setPinCode(this.pinCode);
+            promptAction.showToast({ message: t('change_pin_code', this.languageVersion) + ': ' + (this.pinCode ? this.pinCode : t('pin_code_disabled', this.languageVersion)) });
+            this.showPinCodeDialog = false;
+          })
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.SpaceEvenly)
+      .margin({ top: 20 })
+    }
+    .width('100%')
+    .padding(16)
+  }
+
   // 切换动画
   private toggleAnimation(): void {
     this.animationEnabled = !this.animationEnabled;
@@ -475,15 +582,15 @@ export struct SettingsTab {
     this.showPortDialog = true;
   }
 
-  // 打开隐私政策
-  private openPrivacyPolicy() {
-    // 使用系统浏览器打开隐私政策页面
-    const privacyUrl = 'https://github.com/never88gone/localsend_never88gone/blob/main/Privacy.md';
-    this.context?.openLink(privacyUrl).catch((err: Error) => {
-      hilog.error(0x0000, 'SettingsTab', 'Failed to open privacy policy: ' + err.message);
-      promptAction.showToast({ message: 'Error' });
-    });
+  // 显示 PIN 码输入弹窗
+  private showPinCodeInputDialog() {
+    this.tempPinCode = this.pinCode;
+    this.showPinCodeDialog = true;
   }
+
+
+
+
 }
 
 /**
@@ -498,6 +605,7 @@ struct SettingsRowComponent {
   @Prop themeVersion: number;
   @Prop languageVersion: number;
   onItemClick: () => void = (): void => {};
+  @State isPressed: boolean = false;
 
   build() {
     Row() {
@@ -525,6 +633,16 @@ struct SettingsRowComponent {
     }
     .width('100%')
     .padding({ left: 16, right: 16, top: 16, bottom: 16 })
+    .backgroundColor(this.isPressed && !this.isToggle ? gc('accent_bg', this.themeVersion) : Color.Transparent)
+    .onTouch((event: TouchEvent) => {
+      if (!this.isToggle) {
+        if (event.type === TouchType.Down) {
+          this.isPressed = true;
+        } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+          this.isPressed = false;
+        }
+      }
+    })
     .onClick((): void => {
       if (!this.isToggle) {
         this.onItemClick();

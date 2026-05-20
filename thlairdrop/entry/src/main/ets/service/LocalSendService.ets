@@ -5,6 +5,41 @@
  */
 
 import native from 'libentry.so';
+import wifiManager from '@ohos.wifiManager';
+
+/**
+ * 将整型 IP 地址格式化为点分十进制字符串，包含大小端自适应校验
+ */
+function formatIpAddress(ipAddress: number): string {
+  if (ipAddress <= 0) {
+    return '';
+  }
+  // 小端序字节提取
+  const le0 = ipAddress & 0xFF;
+  const le1 = (ipAddress >> 8) & 0xFF;
+  const le2 = (ipAddress >> 16) & 0xFF;
+  const le3 = (ipAddress >>> 24) & 0xFF;
+
+  // 大端序字节提取
+  const be0 = (ipAddress >>> 24) & 0xFF;
+  const be1 = (ipAddress >> 16) & 0xFF;
+  const be2 = (ipAddress >> 8) & 0xFF;
+  const be3 = ipAddress & 0xFF;
+
+  // 校验首字节是否为私有局域网IP常用开头 (192, 10, 172)
+  const isPrivate = (firstByte: number): boolean => {
+    return firstByte === 192 || firstByte === 10 || firstByte === 172;
+  };
+
+  if (isPrivate(le0) && !isPrivate(be0)) {
+    return `${le0}.${le1}.${le2}.${le3}`;
+  }
+  if (isPrivate(be0) && !isPrivate(le0)) {
+    return `${be0}.${be1}.${be2}.${be3}`;
+  }
+  // 默认使用小端 (对应 ARM/x86 鸿蒙设备)
+  return `${le0}.${le1}.${le2}.${le3}`;
+}
 
 /**
  * 设备类型
@@ -54,6 +89,7 @@ export interface FileInfo {
   fileType?: string;
   preview?: string;
   filePath?: string;
+  fd?: number;
 }
 
 /**
@@ -84,10 +120,94 @@ export interface SendRequest {
 export class LocalSendService {
   private static instance: LocalSendService | null = null;
   private _isRunning: boolean = false;
-  private _alias: string = 'HarmonyOS Device';
+  private _alias: string = '糖葫芦投送';
   private _port: number = 53317;
 
-  private constructor() {}
+  private deviceCallbacks: Set<(deviceJson: string) => void> = new Set();
+  private fileCallbacks: Set<(requestJson: string) => void> = new Set();
+  private progressCallbacks: Set<(id: string, progress: number) => void> = new Set();
+  private isCallbacksInitialized: boolean = false;
+
+  private constructor() {
+    // 初始化时，如果 AppStorage 已经有了 PIN 码，同步到 C++
+    try {
+      const pin = AppStorage.get<string>('appPinCode');
+      if (pin !== undefined) {
+        native.setPinCode(pin);
+        console.info(`[LocalSend] Initialized PIN code from AppStorage, length: ${pin.length}`);
+      }
+    } catch (e) {
+      console.error('[LocalSend] Failed to initialize PIN code in constructor:', e);
+    }
+  }
+
+  private initNativeCallbacks(): void {
+    if (this.isCallbacksInitialized) {
+      return;
+    }
+    try {
+      native.setDeviceCallback((deviceJson: string) => {
+        this.deviceCallbacks.forEach((cb) => {
+          try {
+            cb(deviceJson);
+          } catch (e) {
+            console.error('[LocalSend] Error in device callback:', e);
+          }
+        });
+      });
+
+      native.setFileCallback((requestJson: string) => {
+        this.fileCallbacks.forEach((cb) => {
+          try {
+            cb(requestJson);
+          } catch (e) {
+            console.error('[LocalSend] Error in file callback:', e);
+          }
+        });
+      });
+
+      native.setProgressCallback((id: string, progress: number) => {
+        this.progressCallbacks.forEach((cb) => {
+          try {
+            cb(id, progress);
+          } catch (e) {
+            console.error('[LocalSend] Error in progress callback:', e);
+          }
+        });
+      });
+
+      this.isCallbacksInitialized = true;
+    } catch (error) {
+      console.error('[LocalSend] Failed to initialize native callbacks:', error);
+    }
+  }
+
+  registerDeviceCallback(callback: (deviceJson: string) => void): void {
+    this.initNativeCallbacks();
+    this.deviceCallbacks.add(callback);
+  }
+
+  unregisterDeviceCallback(callback: (deviceJson: string) => void): void {
+    this.deviceCallbacks.delete(callback);
+  }
+
+  registerFileCallback(callback: (requestJson: string) => void): void {
+    this.initNativeCallbacks();
+    this.fileCallbacks.add(callback);
+  }
+
+  unregisterFileCallback(callback: (requestJson: string) => void): void {
+    this.fileCallbacks.delete(callback);
+  }
+
+  registerProgressCallback(callback: (id: string, progress: number) => void): void {
+    this.initNativeCallbacks();
+    this.progressCallbacks.add(callback);
+  }
+
+  unregisterProgressCallback(callback: (id: string, progress: number) => void): void {
+    this.progressCallbacks.delete(callback);
+  }
 
   /**
    * 获取单例实例
@@ -108,13 +228,22 @@ export class LocalSendService {
       return true;
     }
 
+    let wifiIp = '';
     try {
-      const success = native.startServer(alias, port);
+      const ipInfo = wifiManager.getIpInfo();
+      wifiIp = formatIpAddress(ipInfo.ipAddress);
+      console.info('[LocalSend] wifiManager resolved WiFi IP:', wifiIp);
+    } catch (wifiErr) {
+      console.error('[LocalSend] Failed to resolve WiFi IP via wifiManager:', wifiErr);
+    }
+
+    try {
+      const success = native.startServer(alias, port, wifiIp);
       if (success) {
         this._isRunning = true;
         this._alias = alias;
         this._port = port;
-        console.info(`[LocalSend] Server started on port ${port}`);
+        console.info(`[LocalSend] Server started on port ${port} with IP ${wifiIp}`);
       }
       return success;
     } catch (error) {
@@ -241,6 +370,18 @@ export class LocalSendService {
   }
 
   /**
+   * 设置接收端 PIN 码
+   */
+  setPinCode(pin: string): void {
+    try {
+      native.setPinCode(pin);
+      console.info(`[LocalSend] PIN code synchronized, length: ${pin.length}`);
+    } catch (error) {
+      console.error('[LocalSend] Failed to synchronize PIN code:', error);
+    }
+  }
+
+  /**
    * 发送文件请求
    */
   sendRequest(targetIp: string, port: number, files: FileInfo[]): boolean {
@@ -316,30 +457,21 @@ export class LocalSendService {
    * 设置设备发现回调
    */
   setDeviceCallback(callback: (deviceJson: string) => void): void {
-    try {
-      native.setDeviceCallback(callback);
-    } catch (error) {
-      console.error('[LocalSend] Failed to set device callback:', error);
-    }
+    this.registerDeviceCallback(callback);
   }
 
   /**
    * 设置文件请求回调
    */
   setFileRequestCallback(callback: (requestJson: string) => void): void {
-    try {
-      native.setFileCallback(callback);
-    } catch (error) {
-      console.error('[LocalSend] Failed to set file callback:', error);
-    }
+    this.registerFileCallback(callback);
   }
 
   /**
    * 设置进度回调
    */
   setProgressCallback(callback: (id: string, progress: number) => void): void {
-    // TODO: 需要在 native 模块中实现 setProgressCallback
-    console.warn('[LocalSend] setProgressCallback not implemented in native module');
+    this.registerProgressCallback(callback);
   }
 
   /**

@@ -50,6 +50,8 @@ export default class EntryAbility extends UIAbility {
       AppStorage.setOrCreate('appSaveDir', settings.saveDir);
       AppStorage.setOrCreate('appPort', settings.port);
       AppStorage.setOrCreate('appAliasName', settings.aliasName);
+      AppStorage.setOrCreate('appPrivacyAccepted', settings.privacyAccepted);
+      AppStorage.setOrCreate('appPinCode', settings.pinCode);
       
       hilog.info(DOMAIN, 'testTag', 'Settings pre-loaded: theme=%{public}s, colorTheme=%{public}s', 
         settings.theme, settings.colorTheme);
@@ -66,10 +68,38 @@ export default class EntryAbility extends UIAbility {
     // Main window is created, set main page for this ability
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
 
+    // 初始化默认高度为0，避免页面读取时为undefined
+    AppStorage.setOrCreate('statusBarHeight', 0);
+
     // 等待设置加载完成后再加载页面，避免主题闪烁
     (async () => {
       if (this.settingsReady) {
         await this.settingsReady;
+      }
+
+      try {
+        let windowClass: window.Window = windowStage.getMainWindowSync();
+        // 开启全屏沉浸式
+        await windowClass.setWindowLayoutFullScreen(true);
+        // 设置状态栏与导航栏为透明
+        await windowClass.setWindowSystemBarProperties({
+          statusBarColor: '#00000000',
+          navigationBarColor: '#00000000'
+        });
+
+        // 获取系统避让区域高度 (状态栏)
+        let avoidArea = windowClass.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+        let sysHeight = avoidArea.topRect.height;
+        // 获取刘海屏/挖孔屏避让区域高度
+        let cutoutArea = windowClass.getWindowAvoidArea(window.AvoidAreaType.TYPE_CUTOUT);
+        let cutoutHeight = cutoutArea.topRect.height;
+
+        let totalTopHeight = Math.max(sysHeight, cutoutHeight);
+        AppStorage.setOrCreate('statusBarHeight', totalTopHeight);
+
+        hilog.info(DOMAIN, 'testTag', 'Succeeded in setting fullscreen immersive mode. StatusBarHeight: %{public}d', totalTopHeight);
+      } catch (err) {
+        hilog.error(DOMAIN, 'testTag', 'Failed to set fullscreen immersive mode: %{public}s', JSON.stringify(err));
       }
       
       windowStage.loadContent('pages/Index', (err) => {

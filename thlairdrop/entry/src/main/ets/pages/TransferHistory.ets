@@ -3,6 +3,7 @@ import router from '@ohos.router';
 import { historyService, HistoryRecord } from '../services/HistoryService';
 import { gc, ThemeManager } from '../utils/ThemeManager';
 import { t } from '../utils/I18nManager';
+import { PageHeader } from '../components/PageHeader';
 
 @Entry
 @Component
@@ -45,115 +46,101 @@ struct TransferHistory {
   }
 
   build() {
-    Column() {
-      // 顶部导航
-      Row() {
-        Button({ type: ButtonType.Circle }) {
-          SymbolGlyph($r('sys.symbol.chevron_left'))
-            .fontSize(24)
-            .fontColor([gc('text_primary', this.themeVersion)])
-        }
-        .width(44)
-        .height(44)
-        .backgroundColor(gc('transparent', this.themeVersion))
-        .onClick(() => {
-          router.back();
+    Stack() {
+      // 1. 背景色容器 (铺满屏幕)
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor(gc('bg_primary', this.themeVersion))
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+
+      // 2. 实际内容容器 (安全区内)
+      Column() {
+        PageHeader({
+          title: t('history_title', this.languageVersion),
+          centerTitle: true,
+          showActionButton: true,
+          actionIcon: $r('sys.symbol.trash'),
+          onActionClick: (): void => { this.clearHistory(); },
+          themeVersion: this.themeVersion
         })
 
-        Text(t('history_title', this.languageVersion))
-          .fontSize(20)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(gc('text_primary', this.themeVersion))
-          .layoutWeight(1)
-          .textAlign(TextAlign.Center)
-
-        Button({ type: ButtonType.Circle }) {
-          SymbolGlyph($r('sys.symbol.trash'))
-            .fontSize(22)
-            .fontColor([gc('text_secondary', this.themeVersion)])
-        }
-        .width(44)
-        .height(44)
-        .backgroundColor(gc('transparent', this.themeVersion))
-        .onClick(() => {
-          this.clearHistory();
-        })
-      }
-      .width('100%')
-      .padding({ left: 16, right: 16, top: 20, bottom: 16 })
-
-      // 分段切换器
-      Row() {
-        Column() {
-          Text(t('tab_receive', this.languageVersion))
-            .fontSize(16)
-            .fontWeight(this.currentTab === 0 ? FontWeight.Medium : FontWeight.Normal)
-            .fontColor(this.currentTab === 0 ? gc('accent', this.themeVersion) : gc('text_secondary', this.themeVersion))
-          
-          if (this.currentTab === 0) {
-            Divider()
-              .strokeWidth(3)
-              .color(gc('accent', this.themeVersion))
-              .width(40)
-              .margin({ top: 4 })
-          }
-        }
-        .layoutWeight(1)
-        .onClick(() => { this.currentTab = 0; })
-
-        Column() {
-          Text(t('tab_send', this.languageVersion))
-            .fontSize(16)
-            .fontWeight(this.currentTab === 1 ? FontWeight.Medium : FontWeight.Normal)
-            .fontColor(this.currentTab === 1 ? gc('accent', this.themeVersion) : gc('text_secondary', this.themeVersion))
-          
-          if (this.currentTab === 1) {
-            Divider()
-              .strokeWidth(3)
-              .color(gc('accent', this.themeVersion))
-              .width(40)
-              .margin({ top: 4 })
-          }
-        }
-        .layoutWeight(1)
-        .onClick(() => { this.currentTab = 1; })
-      }
-      .width('100%')
-      .height(50)
-      .backgroundColor(gc('bg_secondary', this.themeVersion))
-      .padding({ top: 10 })
-
-      // 历史列表
-      if (this.getFilteredHistory().length > 0) {
-        List({ space: 12 }) {
-          ForEach(this.getFilteredHistory(), (item: HistoryRecord) => {
-            ListItem() {
-              this.HistoryItem(item)
+        // 分段切换器
+        Row() {
+          Column() {
+            Text(t('tab_receive', this.languageVersion))
+              .fontSize(16)
+              .fontWeight(this.currentTab === 0 ? FontWeight.Medium : FontWeight.Normal)
+              .fontColor(this.currentTab === 0 ? gc('accent', this.themeVersion) : gc('text_secondary', this.themeVersion))
+            
+            if (this.currentTab === 0) {
+              Divider()
+                .strokeWidth(3)
+                .color(gc('accent', this.themeVersion))
+                .width(40)
+                .margin({ top: 4 })
             }
-          })
+          }
+          .layoutWeight(1)
+          .onClick(() => { this.currentTab = 0; })
+
+          Column() {
+            Text(t('tab_send', this.languageVersion))
+              .fontSize(16)
+              .fontWeight(this.currentTab === 1 ? FontWeight.Medium : FontWeight.Normal)
+              .fontColor(this.currentTab === 1 ? gc('accent', this.themeVersion) : gc('text_secondary', this.themeVersion))
+            
+            if (this.currentTab === 1) {
+              Divider()
+                .strokeWidth(3)
+                .color(gc('accent', this.themeVersion))
+                .width(40)
+                .margin({ top: 4 })
+            }
+          }
+          .layoutWeight(1)
+          .onClick(() => { this.currentTab = 1; })
         }
         .width('100%')
-        .layoutWeight(1)
-        .padding(16)
-        .edgeEffect(EdgeEffect.Spring)
-      } else {
-        Column() {
-          SymbolGlyph($r('sys.symbol.doc_text'))
-            .fontSize(64)
-            .fontColor([gc('divider', this.themeVersion)])
-          Text(t('empty_history', this.languageVersion))
-            .fontSize(16)
-            .fontColor(gc('text_tertiary', this.themeVersion))
-            .margin({ top: 16 })
+        .height(50)
+        .backgroundColor(gc('bg_secondary', this.themeVersion))
+        .padding({ top: 10 })
+
+        // 历史列表
+        if (this.getFilteredHistory().length > 0) {
+          List({ space: 12 }) {
+            ForEach(this.getFilteredHistory(), (item: HistoryRecord) => {
+              ListItem() {
+                this.HistoryItem(item)
+              }
+            })
+          }
+          .width('100%')
+          .layoutWeight(1)
+          .padding(16)
+          .edgeEffect(EdgeEffect.Spring)
+        } else {
+          Column() {
+            SymbolGlyph($r('sys.symbol.doc_text'))
+              .fontSize(64)
+              .fontColor([gc('divider', this.themeVersion)])
+            Text(t('empty_history', this.languageVersion))
+              .fontSize(16)
+              .fontColor(gc('text_tertiary', this.themeVersion))
+              .margin({ top: 16 })
+          }
+          .width('100%')
+          .layoutWeight(1)
+          .justifyContent(FlexAlign.Center)
         }
-        .width('100%')
-        .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
       }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .alignItems(HorizontalAlign.Start)
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(gc('bg_primary', this.themeVersion))
   }
 
   @Builder HistoryItem(item: HistoryRecord) {

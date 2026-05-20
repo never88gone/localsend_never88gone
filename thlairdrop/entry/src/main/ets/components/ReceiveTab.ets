@@ -42,6 +42,7 @@ export struct ReceiveTab {
   @Watch('onRefreshTriggered') @StorageProp('themeVersion') themeVersion: number = 0;
   @State themeRefreshKey: number = 0;
   @Link aliasName: string;
+  @StorageLink('appPinCode') pinCode: string = '';
   @Watch('onRefreshTriggered') @StorageProp('languageVersion') languageVersion: number = 0;
   
   onRefreshTriggered() {
@@ -59,20 +60,25 @@ export struct ReceiveTab {
   
   private settingsService: SettingsService = SettingsService.getInstance();
   private taskUpdateListener = (tasks: TransferTask[]) => {
-    this.receiveTasks = tasks.filter(t => t.direction === TransferDirection.Receive);
+    this.receiveTasks = tasks.filter(t => 
+      t.direction === TransferDirection.Receive && 
+      (t.state === TransferState.Pending || t.state === TransferState.InProgress)
+    );
+  };
+  private fileRequestCallback = (requestJson: string) => {
+    this.handleFileRequest(requestJson);
   };
 
   aboutToAppear() {
     // 注册文件请求回调
-    localSendService.setFileRequestCallback((requestJson: string) => {
-      this.handleFileRequest(requestJson);
-    });
+    localSendService.registerFileCallback(this.fileRequestCallback);
 
     // 注册任务更新监听器
     fileTransferManager.onUpdate(this.taskUpdateListener);
   }
 
   aboutToDisappear() {
+    localSendService.unregisterFileCallback(this.fileRequestCallback);
     fileTransferManager.offUpdate(this.taskUpdateListener);
   }
 
@@ -101,6 +107,7 @@ export struct ReceiveTab {
 
       const info: FileRequestInfo = { device, files, totalSize };
       this.pendingRequests.set(request.id, info);
+      this.pendingRequests = new Map(this.pendingRequests);
     } catch (e) {
       console.error('Failed to parse file request:', e);
     }
@@ -108,7 +115,10 @@ export struct ReceiveTab {
 
   private updateTasks() {
     const allTasks = fileTransferManager.getAllTasks();
-    this.receiveTasks = allTasks.filter(t => t.direction === TransferDirection.Receive);
+    this.receiveTasks = allTasks.filter(t => 
+      t.direction === TransferDirection.Receive && 
+      (t.state === TransferState.Pending || t.state === TransferState.InProgress)
+    );
   }
 
   private async acceptRequest(requestId: string) {
@@ -116,12 +126,7 @@ export struct ReceiveTab {
     if (!request) return;
 
     // 创建接收任务
-    let actualDir = '/data/storage/el2/base/files/Download';
-    if (this.saveDir === '文档' || this.saveDir === 'Documents') {
-      actualDir = '/data/storage/el2/base/files/Documents';
-    } else if (this.saveDir === '图片' || this.saveDir === 'Pictures') {
-      actualDir = '/data/storage/el2/base/files/Pictures';
-    }
+    const actualDir = fileTransferManager.resolveSavePath(this.saveDir);
     const task = fileTransferManager.createReceiveTask(
       requestId,
       request.device,
@@ -148,6 +153,7 @@ export struct ReceiveTab {
     const success = await fileTransferManager.acceptReceive(requestId, actualDir);
     if (success) {
       this.pendingRequests.delete(requestId);
+      this.pendingRequests = new Map(this.pendingRequests);
       promptAction.showToast({ message: t('receive_start', this.languageVersion) });
     } else {
       promptAction.showToast({ message: t('accept_failed', this.languageVersion) });
@@ -157,6 +163,7 @@ export struct ReceiveTab {
   private rejectRequest(requestId: string) {
     fileTransferManager.rejectReceive(requestId);
     this.pendingRequests.delete(requestId);
+    this.pendingRequests = new Map(this.pendingRequests);
   }
 
   build() {
@@ -227,6 +234,23 @@ export struct ReceiveTab {
               .fontWeight(FontWeight.Bold)
               .fontColor(gc('text_primary', this.themeVersion))
             
+            if (this.pinCode) {
+              Row() {
+                SymbolGlyph($r('sys.symbol.lock_fill'))
+                  .fontSize(12)
+                  .fontColor([gc('accent', this.themeVersion)])
+                  .margin({ right: 4 })
+                Text(`PIN: ${this.pinCode}`)
+                  .fontSize(13)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(gc('accent', this.themeVersion))
+              }
+              .backgroundColor(gc('accent_bg', this.themeVersion))
+              .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+              .borderRadius(8)
+              .margin({ top: 6 })
+            }
+            
             Toggle({ type: ToggleType.Switch, isOn: this.isServerRunning })
               .margin({ top: 10 })
               .selectedColor(gc('accent', this.themeVersion))
@@ -274,7 +298,7 @@ export struct ReceiveTab {
                     
                     Blank()
                     
-                    Text(this.formatSize(entry[1].totalSize))
+                    Text(formatSize(entry[1].totalSize))
                       .fontSize(14)
                       .fontColor(gc('text_secondary', this.themeVersion))
                   }
@@ -291,8 +315,9 @@ export struct ReceiveTab {
                     Button(t('reject', this.languageVersion))
                       .fontSize(14)
                       .fontColor(gc('error', this.themeVersion))
-                      .backgroundColor(gc('error_bg', this.themeVersion))
-                      .borderRadius(8)
+                      .backgroundColor(Color.Transparent)
+                      .border({ width: 1, color: gc('error', this.themeVersion) })
+                      .borderRadius(12)
                       .layoutWeight(1)
                       .onClick(() => this.rejectRequest(entry[0]))
 
@@ -300,9 +325,9 @@ export struct ReceiveTab {
 
                     Button(t('accept', this.languageVersion))
                       .fontSize(14)
-                      .fontColor(gc('success', this.themeVersion))
-                      .backgroundColor(gc('success_bg', this.themeVersion))
-                      .borderRadius(8)
+                      .fontColor(Color.White)
+                      .backgroundColor(gc('success', this.themeVersion))
+                      .borderRadius(12)
                       .layoutWeight(1)
                       .onClick(() => this.acceptRequest(entry[0]))
                   }
@@ -315,7 +340,7 @@ export struct ReceiveTab {
                 .margin({ bottom: 12 })
               }, (entry: [string, FileRequestInfo]) => entry[0])
             }
-            .width('90%')
+            .width('100%')
             .margin({ top: 20 })
           }
 
@@ -339,7 +364,7 @@ export struct ReceiveTab {
                 })
               })
             }
-            .width('90%')
+            .width('100%')
             .margin({ top: 20 })
           }
 
@@ -379,7 +404,7 @@ export struct ReceiveTab {
               }
               .width('100%')
             }
-            .width('90%')
+            .width('100%')
             .padding(20)
             .backgroundColor(gc('bg_secondary', this.themeVersion))
             .borderRadius(16)
@@ -395,50 +420,66 @@ export struct ReceiveTab {
               .margin({ bottom: 10 })
             
             Row() {
-              this.QuickSaveButton(t('quick_save_off', this.languageVersion), 0)
-              this.QuickSaveButton(t('quick_save_fav', this.languageVersion), 1)
-              this.QuickSaveButton(t('quick_save_on', this.languageVersion), 2)
+              QuickSaveButtonComponent({ index: 0, currentMode: $quickSaveMode, languageVersion: this.languageVersion })
+              QuickSaveButtonComponent({ index: 1, currentMode: $quickSaveMode, languageVersion: this.languageVersion })
+              QuickSaveButtonComponent({ index: 2, currentMode: $quickSaveMode, languageVersion: this.languageVersion })
             }
             .width('100%')
             .height(40)
-            .backgroundColor(gc('divider', this.themeVersion))
+            .backgroundColor(gc('bg_secondary', this.themeVersion))
+            .border({ width: 1, color: gc('divider', this.themeVersion) })
             .borderRadius(20)
             .padding(2)
           }
-          .width('80%')
+          .width('100%')
           .margin({ top: 20, bottom: 40 })
         }
         .width('100%')
+        .padding({ left: 16, right: 16 })
       }
       .width('100%')
       .height('100%')
       .scrollBar(BarState.Off)
       .backgroundColor(gc('bg_primary', this.themeVersion))
+      .align(Alignment.Top)
       .key(`receive_tab_scroll_${this.themeRefreshKey}`)
     }
     .width('100%')
     .height('100%')
   }
 
-  @Builder QuickSaveButton(label: string, index: number) {
-    Text(label)
+}
+
+@Component
+struct QuickSaveButtonComponent {
+  @Prop index: number;
+  @Link currentMode: number;
+  @Prop languageVersion: number;
+  @StorageProp('themeVersion') themeVersion: number = 0;
+  private settingsService = SettingsService.getInstance();
+
+  build() {
+    Text(this.index === 0 ? t('quick_save_off', this.languageVersion) :
+         this.index === 1 ? t('quick_save_fav', this.languageVersion) :
+         t('quick_save_on', this.languageVersion))
       .layoutWeight(1)
       .height('100%')
       .textAlign(TextAlign.Center)
       .fontSize(14)
-      .fontColor(this.quickSaveMode === index ? gc('text_primary', this.themeVersion) : gc('text_secondary', this.themeVersion))
-      .backgroundColor(this.quickSaveMode === index ? gc('bg_secondary', this.themeVersion) : gc('transparent', this.themeVersion))
+      .fontWeight(this.currentMode === this.index ? FontWeight.Bold : FontWeight.Normal)
+      .fontColor(this.currentMode === this.index ? Color.White : gc('text_secondary', this.themeVersion))
+      .backgroundColor(this.currentMode === this.index ? gc('accent', this.themeVersion) : Color.Transparent)
       .borderRadius(18)
       .onClick(() => {
-        this.quickSaveMode = index;
-        this.settingsService.setQuickSaveMode(index);
+        this.currentMode = this.index;
+        this.settingsService.setQuickSaveMode(this.index);
       })
   }
+}
 
-  private formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-    return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
-  }
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }

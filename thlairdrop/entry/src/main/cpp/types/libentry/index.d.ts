@@ -12,9 +12,10 @@
  * 启动 LocalSend 服务器
  * @param alias 设备别名
  * @param port 监听端口 (默认: 53317)
+ * @param localIp 本机实际 WiFi IP 地址 (可选)
  * @returns 是否启动成功
  */
-export const startServer: (alias: string, port: number) => boolean;
+export const startServer: (alias: string, port: number, localIp?: string) => boolean;
 
 /**
  * 停止 LocalSend 服务器
@@ -82,6 +83,12 @@ export const getFingerprint: () => string;
  */
 export const setAlias: (alias: string) => boolean;
 
+/**
+ * 设置接收端 PIN 码
+ * @param pin PIN 码，若空则禁用 PIN 码
+ */
+export const setPinCode: (pin: string) => void;
+
 // ============================================================================
 // 文件传输
 // ============================================================================
@@ -141,6 +148,12 @@ export const setDeviceCallback: (callback: (deviceJson: string) => void) => void
  * @param callback 回调函数
  */
 export const setFileCallback: (callback: (requestJson: string) => void) => void;
+
+/**
+ * 设置进度回调
+ * @param callback 回调函数
+ */
+export const setProgressCallback: (callback: (id: string, progress: number) => void) => void;
 
 // ============================================================================
 // 类型定义

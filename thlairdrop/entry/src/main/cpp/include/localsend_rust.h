@@ -27,8 +27,9 @@ void localsend_rust_free_string(char* s);
 /// 启动 LocalSend 服务器
 /// @param alias 设备别名，如果为 NULL 则使用默认名称
 /// @param port 监听端口，默认 53317
+/// @param local_ip 可选传入的本机实际 WiFi IP 地址，如果为 NULL 或空则内部获取
 /// @return 成功返回 true
-bool localsend_start_server(const char* alias, uint16_t port);
+bool localsend_start_server(const char* alias, uint16_t port, const char* local_ip);
 
 /// 停止 LocalSend 服务器
 void localsend_stop_server(void);
@@ -73,6 +74,10 @@ char* localsend_get_fingerprint(void);
 /// @param alias 新的设备别名
 /// @return 成功返回 true
 bool localsend_set_alias(const char* alias);
+
+/// 设置接收端 PIN 码
+/// @param pin PIN 码，若为 NULL 或空则禁用 PIN 码
+void localsend_set_pin_code(const char* pin);
 
 // ============================================================================
 // 文件传输

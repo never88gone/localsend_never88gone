@@ -3,6 +3,8 @@
     "pages/Index",
     "pages/TransferHistory",
     "pages/ThirdPartyLicenses",
-    "pages/HelpPage"
+    "pages/HelpPage",
+    "pages/PrivacyPolicy",
+    "pages/ContactCommunity"
   ]
 }

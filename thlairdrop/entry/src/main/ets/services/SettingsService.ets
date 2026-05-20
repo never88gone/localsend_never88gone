@@ -1,6 +1,7 @@
 import preferences from '@ohos.data.preferences';
 import hilog from '@ohos.hilog';
 import common from '@ohos.app.ability.common';
+import { LocalSendService } from '../service/LocalSendService';
 
 // 设置数据结构
 export interface AppSettings {
@@ -14,6 +15,8 @@ export interface AppSettings {
   encryptionEnabled: boolean;
   aliasName: string;
   favorites: string[]; // 收藏设备的指纹列表
+  privacyAccepted: boolean; // 隐私协议是否已同意
+  pinCode: string; // 接收端 PIN 码，若空则禁用
 }
 
 // 默认设置
@@ -26,8 +29,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   saveDir: '下载',
   port: 53317,
   encryptionEnabled: true,
-  aliasName: 'HarmonyOS 设备',
-  favorites: []
+  aliasName: '糖葫芦投送',
+  favorites: [],
+  privacyAccepted: false,
+  pinCode: ''
 };
 
 // 主题变更回调类型
@@ -103,6 +108,8 @@ export class SettingsService {
       const encryptionEnabled = await this.prefs.get('encryptionEnabled', DEFAULT_SETTINGS.encryptionEnabled) as boolean;
       const aliasName = await this.prefs.get('aliasName', DEFAULT_SETTINGS.aliasName) as string;
       const favoritesJson = await this.prefs.get('favorites', '[]') as string;
+      const privacyAccepted = await this.prefs.get('privacyAccepted', DEFAULT_SETTINGS.privacyAccepted) as boolean;
+      const pinCode = await this.prefs.get('pinCode', DEFAULT_SETTINGS.pinCode) as string;
       
       const settings: AppSettings = {
         theme: theme,
@@ -114,7 +121,9 @@ export class SettingsService {
         port: port,
         encryptionEnabled: encryptionEnabled,
         aliasName: aliasName,
-        favorites: JSON.parse(favoritesJson) as string[]
+        favorites: JSON.parse(favoritesJson) as string[],
+        privacyAccepted: privacyAccepted,
+        pinCode: pinCode
       };
       return settings;
     } catch (e) {
@@ -196,6 +205,20 @@ export class SettingsService {
       return false;
     }
     return await this.saveSetting('aliasName', alias.trim());
+  }
+  
+  // 保存隐私协议同意状态
+  async setPrivacyAccepted(accepted: boolean): Promise<boolean> {
+    return await this.saveSetting('privacyAccepted', accepted);
+  }
+
+  // 保存 PIN 码并同步到 C++
+  async setPinCode(pin: string): Promise<boolean> {
+    const success = await this.saveSetting('pinCode', pin);
+    if (success) {
+      LocalSendService.getInstance().setPinCode(pin);
+    }
+    return success;
   }
   
   // 通用保存设置

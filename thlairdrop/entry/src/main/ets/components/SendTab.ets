@@ -3,6 +3,7 @@ import picker from '@ohos.file.picker';
 import { BusinessError } from '@ohos.base';
 import promptAction from '@ohos.promptAction';
 import router from '@ohos.router';
+import fs from '@ohos.file.fs';
 import { fileTransferManager, TransferTask, TransferState, TransferDirection } from '../service/FileTransferManager';
 import { localSendService, Device, FileInfo, DeviceType } from '../service/LocalSendService';
 import { SettingsService } from '../services/SettingsService';
@@ -14,6 +15,7 @@ interface SelectedFile {
   uri: string;
   name: string | undefined;
   size: number;
+  type?: string; // 'file' | 'media' | 'text'
 }
 
 @Component
@@ -37,24 +39,34 @@ export struct SendTab {
   @State showTextInputSheet: boolean = false;
   @State textToSend: string = '';
 
-  // 根据设备模型获取设备图标
-  private getDeviceIcon(deviceModel: string): Resource {
-    const model = deviceModel.toLowerCase();
-    // 手机设备 - 使用手机图标
-    if (model.includes('iphone') || model.includes('ipad') || model.includes('ios') ||
-        model.includes('android') || model.includes('harmony') || model.includes('harmonyos')) {
-      return $r('sys.symbol.phone');
+  // 根据设备模型和设备类型获取设备图标
+  private getDeviceIcon(deviceModel: string, deviceType: string): Resource {
+    const model = (deviceModel || '').toLowerCase();
+    const type = (deviceType || '').toLowerCase();
+    
+    // 1. 平板电脑 - 使用平板图标
+    if (model.includes('ipad') || model.includes('tablet')) {
+      return $r('sys.symbol.pad');
     }
-    // 桌面设备 - 使用显示器图标
-    if (model.includes('windows') || model.includes('mac') || model.includes('macos') || model.includes('linux')) {
+    // 2. 电视设备 - 使用电视图标
+    if (model.includes('tv') || type === 'tv') {
+      return $r('sys.symbol.smartscreen');
+    }
+    // 3. 笔记本电脑 - 使用笔记本图标
+    if (model.includes('macbook') || model.includes('laptop')) {
+      return $r('sys.symbol.matebook');
+    }
+    // 4. 桌面电脑 - 使用显示器图标
+    if (model.includes('windows') || model.includes('mac') || model.includes('macos') || model.includes('linux') || type === 'desktop') {
       return $r('sys.symbol.display');
     }
-    // TV 设备 - 使用显示器图标
-    if (model.includes('tv')) {
-      return $r('sys.symbol.display');
+    // 5. 手机设备 - 使用手机图标
+    if (model.includes('iphone') || model.includes('phone') || model.includes('android') || 
+        model.includes('harmony') || model.includes('harmonyos') || type === 'mobile') {
+      return $r('sys.symbol.phone_1');
     }
     // 默认设备图标
-    return $r('sys.symbol.display');
+    return $r('sys.symbol.phone_1');
   }
 
   // 根据设备模型获取设备类型名称
@@ -82,6 +94,21 @@ export struct SendTab {
   aboutToAppear() {
   }
 
+  private cleanupTempFiles(paths: string[]) {
+    setTimeout(() => {
+      paths.forEach(path => {
+        try {
+          if (fs.accessSync(path)) {
+            fs.unlinkSync(path);
+            hilog.info(0x0000, 'SendTab', `Cleaned up temp file: ${path}`);
+          }
+        } catch (e) {
+          hilog.error(0x0000, 'SendTab', `Failed to delete temp file ${path}: ${(e as Error).message}`);
+        }
+      });
+    }, 2000);
+  }
+
   private async selectFiles() {
     try {
       let documentSelectOptions = new picker.DocumentSelectOptions();
@@ -90,7 +117,17 @@ export struct SendTab {
       let documentSelectResult = await documentPicker.select(documentSelectOptions);
       if (documentSelectResult && documentSelectResult.length > 0) {
         documentSelectResult.forEach(uri => {
-          this.selectedFiles.push({ uri: uri, name: uri.split('/').pop(), size: 0 });
+          let name = uri.split('/').pop() || 'unknown';
+          let size = 0;
+          try {
+            let file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+            let stat = fs.statSync(file.fd);
+            size = stat.size;
+            fs.closeSync(file);
+          } catch (e) {
+            hilog.error(0x0000, 'testTag', 'Failed to get file stat: ' + (e as Error).message);
+          }
+          this.selectedFiles.push({ uri: uri, name: name, size: size, type: 'file' });
         });
         this.selectedFilesCount = this.selectedFiles.length;
         hilog.info(0x0000, 'testTag', 'Selected files: ' + JSON.stringify(documentSelectResult));
@@ -110,7 +147,17 @@ export struct SendTab {
       let photoSelectResult = await photoPicker.select(photoSelectOptions);
       if (photoSelectResult && photoSelectResult.photoUris.length > 0) {
         photoSelectResult.photoUris.forEach(uri => {
-          this.selectedFiles.push({ uri: uri, name: uri.split('/').pop(), size: 0 });
+          let name = uri.split('/').pop() || 'unknown';
+          let size = 0;
+          try {
+            let file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+            let stat = fs.statSync(file.fd);
+            size = stat.size;
+            fs.closeSync(file);
+          } catch (e) {
+            hilog.error(0x0000, 'testTag', 'Failed to get media stat: ' + (e as Error).message);
+          }
+          this.selectedFiles.push({ uri: uri, name: name, size: size, type: 'media' });
         });
         this.selectedFilesCount = this.selectedFiles.length;
         hilog.info(0x0000, 'testTag', 'Selected media: ' + JSON.stringify(photoSelectResult.photoUris));
@@ -127,15 +174,77 @@ export struct SendTab {
       return;
     }
 
-    // 转换为 FileInfo 格式
-    const files: FileInfo[] = this.selectedFiles.map((f: SelectedFile, index: number): FileInfo => ({
-      id: `file-${index}-${Date.now()}`,
-      fileName: f.name || 'unknown',
-      size: f.size || 0,
-      filePath: f.uri
-    }));
+    const context = SettingsService.getInstance().getContext();
+    if (!context) {
+      promptAction.showToast({ message: '无法获取上下文' });
+      return;
+    }
 
-    // 转换设备信息
+    promptAction.showToast({ message: '正在准备发送文件...' });
+
+    const preparedFiles: FileInfo[] = [];
+    const tempPaths: string[] = [];
+
+    for (let i = 0; i < this.selectedFiles.length; i++) {
+      const f = this.selectedFiles[i];
+      if (f.uri.startsWith('text://')) {
+        const textContent = f.uri.substring(7);
+        const tempFileName = `text-${Date.now()}-${i}.txt`;
+        const tempPath = `${context.cacheDir}/${tempFileName}`;
+        try {
+          let file = fs.openSync(tempPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+          fs.writeSync(file.fd, textContent);
+          fs.closeSync(file);
+          
+          let readVal = fs.openSync(tempPath, fs.OpenMode.READ_ONLY);
+          preparedFiles.push({
+            id: `file-${i}-${Date.now()}`,
+            fileName: f.name || 'Text Message.txt',
+            size: textContent.length,
+            filePath: tempPath,
+            fd: readVal.fd
+          });
+          tempPaths.push(tempPath);
+        } catch (e) {
+          hilog.error(0x0000, 'SendTab', `Failed to write text to temp file: ${(e as Error).message}`);
+          promptAction.showToast({ message: `准备文本文件失败: ${(e as Error).message}` });
+          // 清理已经打开的只读 FD
+          preparedFiles.forEach(fileInfo => {
+            if (fileInfo.fd !== undefined && fileInfo.fd >= 0) {
+              try { fs.closeSync(fileInfo.fd); } catch (e) {}
+            }
+          });
+          this.cleanupTempFiles(tempPaths);
+          return;
+        }
+      } else {
+        try {
+          let srcFile = fs.openSync(f.uri, fs.OpenMode.READ_ONLY);
+          let stat = fs.statSync(srcFile.fd);
+          const actualSize = stat.size;
+
+          preparedFiles.push({
+            id: `file-${i}-${Date.now()}`,
+            fileName: f.name || 'unknown',
+            size: actualSize,
+            filePath: f.uri,
+            fd: srcFile.fd // 传递只读 FD，不复制文件
+          });
+        } catch (e) {
+          hilog.error(0x0000, 'SendTab', `Failed to open file: ${(e as Error).message}`);
+          promptAction.showToast({ message: `准备文件 ${f.name} 失败: ${(e as Error).message}` });
+          // 清理已经打开的只读 FD
+          preparedFiles.forEach(fileInfo => {
+            if (fileInfo.fd !== undefined && fileInfo.fd >= 0) {
+              try { fs.closeSync(fileInfo.fd); } catch (e) {}
+            }
+          });
+          this.cleanupTempFiles(tempPaths);
+          return;
+        }
+      }
+    }
+
     const targetDevice: Device = {
       ip: device.ip || '',
       port: device.port || 53317,
@@ -148,28 +257,33 @@ export struct SendTab {
       deviceType: device.deviceType || DeviceType.Mobile
     };
 
-    // 创建发送任务
-    const task = fileTransferManager.createSendTask(targetDevice, files);
+    const task = fileTransferManager.createSendTask(targetDevice, preparedFiles);
 
-    // 注册回调
     fileTransferManager.registerCallback(task.id, {
       onProgress: (progressTask: TransferTask) => {
       },
       onComplete: (completeTask: TransferTask) => {
         promptAction.showToast({ message: t('completed', this.languageVersion) });
-        // 清空已发送的文件
         this.selectedFiles = [];
         this.selectedFilesCount = 0;
+        this.cleanupTempFiles(tempPaths);
       },
       onError: (errorTask: TransferTask, error: string) => {
         promptAction.showToast({ message: `${t('failed', this.languageVersion)}: ${error}` });
+        this.cleanupTempFiles(tempPaths);
       }
     });
 
-    // 启动发送
     const success = await fileTransferManager.startSendTask(task.id);
     if (!success) {
       promptAction.showToast({ message: t('failed', this.languageVersion) });
+      // 启动发送任务失败时，需主动关闭已打开的所有 FD
+      preparedFiles.forEach(fileInfo => {
+        if (fileInfo.fd !== undefined && fileInfo.fd >= 0) {
+          try { fs.closeSync(fileInfo.fd); } catch (e) {}
+        }
+      });
+      this.cleanupTempFiles(tempPaths);
     } else {
       promptAction.showToast({ message: t('in_progress', this.languageVersion) });
     }
@@ -183,227 +297,322 @@ export struct SendTab {
   }
 
   build() {
-    Scroll() {
-      Column() {
-        // 顶部操作栏
-        Row() {
-          Text(t('tab_send', this.languageVersion))
-            .fontSize(28)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(gc('text_primary', this.themeVersion))
-          
-          Blank()
-          
-          Button({ type: ButtonType.Circle }) {
-            SymbolGlyph($r('sys.symbol.clock'))
-              .fontSize(24)
-              .fontColor([gc('text_primary', this.themeVersion)])
-          }
-          .width(56)
-          .height(56)
-          .backgroundColor(gc('transparent', this.themeVersion))
-          .onClick(() => {
-            router.pushUrl({ url: 'pages/TransferHistory' });
-          })
+    Column() {
+      // 顶部操作栏 (固定在顶部，不随内容滚动)
+      Row() {
+        Text(t('tab_send', this.languageVersion))
+          .fontSize(28)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(gc('text_primary', this.themeVersion))
+        
+        Blank()
+        
+        // 帮助按钮 (问号圆圈图标)
+        Button({ type: ButtonType.Circle }) {
+          SymbolGlyph($r('sys.symbol.questionmark_circle'))
+            .fontSize(24)
+            .fontColor([gc('text_primary', this.themeVersion)])
         }
-        .width('100%')
-        .padding({ left: 32, right: 32, top: 20, bottom: 20 })
+        .width(48)
+        .height(48)
+        .backgroundColor(gc('transparent', this.themeVersion))
+        .margin({ right: 8 })
+        .onClick(() => {
+          router.pushUrl({ url: 'pages/HelpPage' });
+        })
+        
+        // 历史记录按钮
+        Button({ type: ButtonType.Circle }) {
+          SymbolGlyph($r('sys.symbol.clock'))
+            .fontSize(24)
+            .fontColor([gc('text_primary', this.themeVersion)])
+        }
+        .width(48)
+        .height(48)
+        .backgroundColor(gc('transparent', this.themeVersion))
+        .onClick(() => {
+          router.pushUrl({ url: 'pages/TransferHistory' });
+        })
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 16, bottom: 16 })
 
-        // 选择部分
+      // 可滚动内容区
+      Scroll() {
         Column() {
+          // 选择部分
+          Column() {
+            Row() {
+              Text(this.selectedFilesCount > 0 ? `${t('select_files', this.languageVersion)} (${this.selectedFilesCount})` : t('select_files', this.languageVersion))
+                .fontSize(20)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(gc('text_primary', this.themeVersion))
+              
+              Blank()
+              
+              if (this.selectedFilesCount > 0) {
+                Text(t('clear', this.languageVersion))
+                  .fontSize(14)
+                  .fontColor(gc('accent', this.themeVersion))
+                  .backgroundColor(Color.Transparent)
+                  .onClick(() => {
+                    this.selectedFiles = [];
+                    this.selectedFilesCount = 0;
+                  })
+              }
+            }
+            .width('100%')
+            .padding({ left: 0, right: 0, top: 10, bottom: 10 })
+            
+            Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
+              this.CategoryButton('file', $r('sys.symbol.doc'), (): void => { this.selectFiles(); })
+              this.CategoryButton('media', $r('sys.symbol.camera'), (): void => { this.selectMedia(); })
+              this.CategoryButton('text', $r('sys.symbol.textformat'), (): void => { this.showTextInputSheet = true; })
+            }
+            .padding({ left: 0, right: 0 })
+
+            // 已选文件预览
+            if (this.selectedFilesCount > 0) {
+              Column() {
+                ForEach(this.selectedFiles, (file: SelectedFile, index: number) => {
+                  Row() {
+                    SymbolGlyph(file.type === 'media' ? $r('sys.symbol.camera') : (file.type === 'text' ? $r('sys.symbol.textformat') : $r('sys.symbol.doc')))
+                      .fontSize(24)
+                      .fontColor([gc('text_secondary', this.themeVersion)])
+                      .margin({ right: 12 })
+                    
+                    Column() {
+                      Text(file.name)
+                        .fontSize(16)
+                        .fontWeight(FontWeight.Medium)
+                        .fontColor(gc('text_primary', this.themeVersion))
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      
+                      Text(this.formatSize(file.size))
+                        .fontSize(12)
+                        .fontColor(gc('text_tertiary', this.themeVersion))
+                        .margin({ top: 4 })
+                    }
+                    .layoutWeight(1)
+                    .alignItems(HorizontalAlign.Start)
+                    
+                    Button({ type: ButtonType.Circle }) {
+                      SymbolGlyph($r('sys.symbol.xmark'))
+                        .fontSize(16)
+                        .fontColor([gc('text_secondary', this.themeVersion)])
+                    }
+                    .width(36)
+                    .height(36)
+                    .backgroundColor(gc('transparent', this.themeVersion))
+                    .onClick(() => {
+                      this.selectedFiles.splice(index, 1);
+                      this.selectedFilesCount = this.selectedFiles.length;
+                    })
+                  }
+                  .width('100%')
+                  .padding({ top: 12, bottom: 12 })
+                  
+                  if (index < this.selectedFiles.length - 1) {
+                    Divider().color(gc('divider', this.themeVersion)).strokeWidth(1)
+                  }
+                })
+              }
+              .width('100%')
+              .backgroundColor(gc('bg_secondary', this.themeVersion))
+              .borderRadius(16)
+              .padding({ left: 16, right: 16 })
+              .margin({ top: 16 })
+              .shadow({ radius: 4, color: '#05000000', offsetY: 2 })
+            }
+          }
+          .width('100%')
+          .margin({ bottom: 24 })
+
+          // 设备列表部分
           Row() {
-            Text(this.selectedFilesCount > 0 ? `${t('select_files', this.languageVersion)} (${this.selectedFilesCount})` : t('select_files', this.languageVersion))
+            Text(t('nearby_devices', this.languageVersion))
               .fontSize(20)
               .fontWeight(FontWeight.Medium)
               .fontColor(gc('text_primary', this.themeVersion))
             
             Blank()
             
-            if (this.selectedFilesCount > 0) {
-              Text(t('clear', this.languageVersion))
-                .fontSize(14)
-                .fontColor(gc('accent', this.themeVersion))
-                .backgroundColor(Color.Transparent)
-                .onClick(() => {
-                  this.selectedFiles = [];
-                  this.selectedFilesCount = 0;
-                })
+            // 扫描状态指示器 / 刷新按钮
+            if (this.isScanning) {
+              LoadingProgress()
+                .width(24)
+                .height(24)
+                .color(gc('accent', this.themeVersion))
+            } else {
+              Button({ type: ButtonType.Circle }) {
+                SymbolGlyph($r('sys.symbol.arrow_clockwise'))
+                  .fontSize(20)
+                  .fontColor([gc('accent', this.themeVersion)])
+              }
+              .width(36)
+              .height(36)
+              .backgroundColor(gc('transparent', this.themeVersion))
+              .onClick(() => {
+                this.isScanning = true;
+                localSendService.scanDevices();
+                setTimeout(() => { this.isScanning = false; }, 3000);
+              })
             }
           }
           .width('100%')
-          .padding({ left: 20, right: 20, top: 10, bottom: 10 })
-          
-          Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
-            this.CategoryButton(t('file', this.languageVersion), $r('sys.symbol.doc'), (): void => { this.selectFiles(); })
-            this.CategoryButton(t('media', this.languageVersion), $r('sys.symbol.camera'), (): void => { this.selectMedia(); })
-            this.CategoryButton(t('text', this.languageVersion), $r('sys.symbol.textformat'), (): void => { this.showTextInputSheet = true; })
-          }
-          .padding({ left: 15, right: 15 })
+          .padding({ left: 0, right: 0, top: 10, bottom: 10 })
 
-          // 已选文件预览
-          if (this.selectedFilesCount > 0) {
+          if (this.devices.length === 0) {
             Column() {
-              ForEach(this.selectedFiles, (file: SelectedFile, index: number) => {
+              SymbolGlyph($r('sys.symbol.wifi'))
+                .fontSize(48)
+                .fontColor([gc('divider', this.themeVersion)])
+                .margin({ bottom: 12 })
+              
+              Text(t('no_devices', this.languageVersion))
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(gc('text_primary', this.themeVersion))
+                .margin({ bottom: 8 })
+
+              Text(t('scan_hint', this.languageVersion))
+                .fontSize(14)
+                .fontColor(gc('text_secondary', this.themeVersion))
+                .textAlign(TextAlign.Center)
+                .margin({ bottom: 16 })
+
+              Button() {
                 Row() {
-                  SymbolGlyph($r('sys.symbol.doc'))
-                    .fontSize(20)
-                    .fontColor([gc('accent', this.themeVersion)])
-                  
-                  Text(file.name || 'unknown')
+                  SymbolGlyph($r('sys.symbol.questionmark_circle'))
+                    .fontSize(16)
+                    .fontColor([Color.White])
+                    .margin({ right: 6 })
+                  Text(t('help', this.languageVersion))
                     .fontSize(14)
-                    .fontColor(gc('text_primary', this.themeVersion))
-                    .margin({ left: 8 })
-                    .maxLines(1)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
-                    .layoutWeight(1)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor(Color.White)
                 }
-                .width('100%')
-                .padding({ top: 4, bottom: 4 })
+              }
+              .height(36)
+              .padding({ left: 16, right: 16 })
+              .backgroundColor(gc('accent', this.themeVersion))
+              .borderRadius(18)
+              .onClick(() => {
+                router.pushUrl({ url: 'pages/HelpPage' });
               })
             }
-            .width('90%')
-            .padding(12)
+            .width('100%')
+            .padding({ top: 30, bottom: 30, left: 16, right: 16 })
             .backgroundColor(gc('bg_secondary', this.themeVersion))
-            .borderRadius(8)
-            .margin({ top: 12 })
+            .borderRadius(16)
+            .shadow({ radius: 4, color: '#05000000', offsetY: 2 })
           }
-        }
 
-        // 附近设备
-        Row() {
-          Text(t('nearby_devices', this.languageVersion))
-            .fontSize(18)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(gc('text_primary', this.themeVersion))
-          
-          Blank()
-          
-          if (this.isScanning) {
-            Text(t('scanning', this.languageVersion))
-              .fontSize(14)
-              .fontColor(gc('text_secondary', this.themeVersion))
-              .margin({ right: 12 })
-          }
-          
-          // 扫描按钮
-          Button({ type: ButtonType.Circle }) {
-            SymbolGlyph($r('sys.symbol.arrow_clockwise'))
-              .fontSize(24)
-              .fontColor([this.isScanning ? gc('accent', this.themeVersion) : gc('text_tertiary', this.themeVersion)])
-          }
-          .width(56)
-          .height(56)
-          .backgroundColor(gc('transparent', this.themeVersion))
-          .onClick(() => {
-            this.isScanning = true;
-            localSendService.scanDevices();
-            setTimeout(() => { this.isScanning = false; }, 3000);
-          })
-          .rotate({ angle: this.isScanning ? 360 : 0 })
-          .animation(this.isScanning ? {
-            duration: 1000,
-            curve: Curve.Linear,
-            iterations: -1
-          } : undefined)
-        }
-        .width('100%')
-        .padding({ left: 20, right: 10, top: 30, bottom: 10 })
-
-        List({ space: 10 }) {
-          if (this.devices.length === 0) {
-            ListItem() {
-              Column() {
-                SymbolGlyph($r('sys.symbol.exclamationmark_circle'))
-                  .fontSize(64)
-                  .fontColor([gc('divider', this.themeVersion)])
-                Text(t('no_devices', this.languageVersion))
-                  .fontSize(16)
-                  .fontColor(gc('text_tertiary', this.themeVersion))
-                  .margin({ top: 16, bottom: 8 })
-                Text(t('scan_hint', this.languageVersion))
-                  .fontSize(14)
-                  .fontColor(gc('text_tertiary', this.themeVersion))
-              }
-              .width('100%')
-              .height(200)
-              .justifyContent(FlexAlign.Center)
-            }
-          }
-          
           ForEach(this.devices, (device: Device) => {
-            ListItem() {
+            Column() {
               Row() {
-                Column() {
-                  SymbolGlyph(this.getDeviceIcon(device.deviceModel))
-                    .fontSize(40)
-                    .fontColor([gc('accent', this.themeVersion)])
-                }
-                .width(64)
-                .height(64)
-                .borderRadius(12)
-                .backgroundColor(gc('accent_bg', this.themeVersion))
-                .justifyContent(FlexAlign.Center)
-                .margin({ right: 16 })
+                // 根据设备类型显示图标
+                SymbolGlyph(this.getDeviceIcon(device.deviceModel, device.deviceType))
+                  .fontSize(32)
+                  .fontColor([gc('accent', this.themeVersion)])
+                  .margin({ right: 16 })
                 
                 Column() {
                   Text(device.alias)
                     .fontSize(18)
-                    .fontWeight(FontWeight.Medium)
+                    .fontWeight(FontWeight.Bold)
                     .fontColor(gc('text_primary', this.themeVersion))
-                  Text(`${this.getDeviceTypeName(device.deviceModel)} • ${device.ip || 'Unknown'}`)
-                    .fontSize(12)
-                    .fontColor(gc('text_secondary', this.themeVersion))
-                    .margin({ top: 4 })
+                  
+                  Row() {
+                    Text(device.ip + ':' + device.port)
+                      .fontSize(12)
+                      .fontColor(gc('text_secondary', this.themeVersion))
+                    
+                    Text(' • ')
+                      .fontSize(12)
+                      .fontColor(gc('text_tertiary', this.themeVersion))
+                    
+                    Text(device.deviceModel || device.deviceType || 'Unknown')
+                      .fontSize(12)
+                      .fontColor(gc('text_secondary', this.themeVersion))
+                  }
+                  .margin({ top: 4 })
                 }
+                .layoutWeight(1)
                 .alignItems(HorizontalAlign.Start)
                 
-                Blank()
-
-                // 收藏按钮
-                FavoriteButton({ fingerprint: device.fingerprint, themeVersion: this.themeVersion, languageVersion: this.languageVersion })
-                
                 if (this.selectedFilesCount > 0) {
-                  Button(t('tab_send', this.languageVersion))
-                    .fontSize(14)
-                    .fontColor(Color.White)
-                    .backgroundColor(gc('accent', this.themeVersion))
-                    .borderRadius(8)
-                    .height(36)
-                    .margin({ left: 12 })
-                    .onClick(() => {
-                      this.sendToDevice(device);
-                    })
+                  Button() {
+                    Text(t('tab_send', this.languageVersion))
+                      .fontSize(14)
+                      .fontWeight(FontWeight.Bold)
+                      .fontColor(Color.White)
+                  }
+                  .height(36)
+                  .padding({ left: 16, right: 16 })
+                  .backgroundColor(gc('accent', this.themeVersion))
+                  .borderRadius(18)
+                  .onClick(() => {
+                    this.sendToDevice(device);
+                  })
                 }
               }
               .width('100%')
               .padding(16)
               .backgroundColor(gc('bg_secondary', this.themeVersion))
               .borderRadius(16)
-              .shadow({ radius: 8, color: '#0A000000', offsetY: 4 })
               .onClick(() => {
                 if (this.selectedFilesCount > 0) {
                   this.sendToDevice(device);
                 }
               })
             }
+            .width('100%')
+            .margin({ top: 8, bottom: 8 })
+            .shadow({ radius: 4, color: '#05000000', offsetY: 2 })
           })
+
+          // 底部帮助提示，引导用户解决无法发现设备的问题
+          if (this.devices.length > 0) {
+            Column() {
+              Button({ type: ButtonType.Normal }) {
+                Row() {
+                  SymbolGlyph($r('sys.symbol.questionmark_circle'))
+                    .fontSize(16)
+                    .fontColor([gc('accent', this.themeVersion)])
+                    .margin({ right: 6 })
+                  Text(t('help', this.languageVersion))
+                    .fontSize(14)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor(gc('accent', this.themeVersion))
+                }
+              }
+              .backgroundColor(Color.Transparent)
+              .borderRadius(8)
+              .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+              .onClick(() => {
+                router.pushUrl({ url: 'pages/HelpPage' });
+              })
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Center)
+            .margin({ top: 24, bottom: 16 })
+          }
         }
         .width('100%')
-        .layoutWeight(1)
-
-        Text(t('help', this.languageVersion))
-          .fontSize(14)
-          .fontColor(gc('accent', this.themeVersion))
-          .margin({ bottom: 40, top: 20 })
-          .onClick(() => {
-            router.pushUrl({ url: 'pages/HelpPage' });
-          })
+        .justifyContent(FlexAlign.Start)
+        .padding({ left: 16, right: 16, bottom: 20 })
       }
       .width('100%')
+      .layoutWeight(1)
+      .scrollBar(BarState.Off)
+      .align(Alignment.Top)
+      .key(`send_tab_scroll_${this.refreshKey}`)
     }
     .width('100%')
     .height('100%')
-    .scrollBar(BarState.Off)
+    .justifyContent(FlexAlign.Start)
     .backgroundColor(gc('bg_primary', this.themeVersion))
     .bindSheet(this.showTextInputSheet, this.TextInputSheet(), {
       height: 300,
@@ -413,8 +622,8 @@ export struct SendTab {
     .key(`send_tab_scroll_${this.refreshKey}`)
   }
 
-  @Builder CategoryButton(label: string, iconResource: Resource, onClick: () => void) {
-    CategoryButtonComponent({ label: label, iconResource: iconResource, onButtonClick: onClick, themeVersion: this.themeVersion, languageVersion: this.languageVersion })
+  @Builder CategoryButton(labelKey: string, iconResource: Resource, onClick: () => void) {
+    CategoryButtonComponent({ labelKey: labelKey, iconResource: iconResource, onButtonClick: onClick, themeVersion: this.themeVersion, languageVersion: this.languageVersion })
   }
 
   @Builder TextInputSheet() {
@@ -451,7 +660,8 @@ export struct SendTab {
               this.selectedFiles.push({
                 uri: 'text://' + this.textToSend.substring(0, 10),
                 name: 'Text Message.txt',
-                size: this.textToSend.length
+                size: this.textToSend.length,
+            type: 'text'
               });
               this.selectedFilesCount = this.selectedFiles.length;
             }
@@ -501,12 +711,13 @@ struct FavoriteButton {
 
 @Component
 struct CategoryButtonComponent {
-  @Prop label: string;
+  @Prop labelKey: string;
   @Prop iconResource: Resource;
   @Prop themeVersion: number;
   @Prop languageVersion: number;
   onButtonClick: () => void = () => {};
   @State scaleVal: number = 1.0;
+  @State isPressed: boolean = false;
 
   build() {
     Column() {
@@ -514,13 +725,13 @@ struct CategoryButtonComponent {
         .fontSize(36)
         .fontColor([gc('accent', this.themeVersion)])
         .margin({ bottom: 8 })
-      Text(this.label)
+      Text(t(this.labelKey, this.languageVersion))
         .fontSize(16)
         .fontColor(gc('text_primary', this.themeVersion))
     }
-    .width('48%')
+    .width('31%')
     .height(90)
-    .backgroundColor(gc('bg_secondary', this.themeVersion))
+    .backgroundColor(this.isPressed ? gc('accent_bg', this.themeVersion) : gc('bg_secondary', this.themeVersion))
     .borderRadius(16)
     .margin({ bottom: 12 })
     .justifyContent(FlexAlign.Center)
@@ -532,8 +743,10 @@ struct CategoryButtonComponent {
     .onTouch((event: TouchEvent) => {
       if (event.type === TouchType.Down) {
         this.scaleVal = 0.92;
+        this.isPressed = true;
       } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
         this.scaleVal = 1.0;
+        this.isPressed = false;
       }
     })
     .onClick(this.onButtonClick)

@@ -3,15 +3,16 @@
     "products": [
       {
         "name": "default",
-        "signingConfig": "release",
         "targetSdkVersion": "5.0.0(12)",
         "compatibleSdkVersion": "5.0.0(12)",
         "runtimeOS": "HarmonyOS",
+        "signingConfig": "default",
         "buildOption": {
           "strictMode": {
             "caseSensitiveCheck": true,
             "useNormalizedOHMUrl": true
-          }
+          },
+          "nativeCompiler": "BiSheng"
         }
       },
       {
@@ -19,11 +20,27 @@
         "targetSdkVersion": "5.0.0(12)",
         "compatibleSdkVersion": "5.0.0(12)",
         "runtimeOS": "HarmonyOS",
+        "signingConfig": "default",
         "buildOption": {
           "strictMode": {
             "caseSensitiveCheck": true,
             "useNormalizedOHMUrl": true
-          }
+          },
+          "nativeCompiler": "BiSheng"
+        }
+      },
+      {
+        "name": "release",
+        "targetSdkVersion": "5.0.0(12)",
+        "compatibleSdkVersion": "5.0.0(12)",
+        "runtimeOS": "HarmonyOS",
+        "signingConfig": "release",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          },
+          "nativeCompiler": "BiSheng"
         }
       }
     ],
@@ -37,13 +54,26 @@
     ],
     "signingConfigs": [
       {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "storeFile": "thl.p12",
+          "storePassword": "00000019D8981228EC62F8C93D371FA276F16CC6FA4E45A10858D8B24377CEB40A91D124AA07339812",
+          "keyAlias": "thl",
+          "keyPassword": "0000001970DFA45266A408A7A796482963A1958413F96B9A82739EA2EAD46D9ADEB5CC403C056F17F8",
+          "signAlg": "SHA256withECDSA",
+          "profile": "airdrop_devDebug.p7b",
+          "certpath": "开发证书.cer"
+        }
+      },
+      {
         "name": "release",
         "type": "HarmonyOS",
         "material": {
           "storeFile": "thl.p12",
-          "storePassword": "00000019F28AA6D59FB7DA7DA8F6D57866716A5DAEB2D301DA05770BE36FA30417A27FA63AE86B10C8",
+          "storePassword": "000000199551391B6206BC7CB1510392096764DA5B60896728C0106DE7369FFF30893E544C569098FC",
           "keyAlias": "thl",
-          "keyPassword": "00000019FC457F6268F6EA8A3F4308D471333785883B74A4145419F657B09C495533BE0350B39D1C6C",
+          "keyPassword": "000000191FBD79985B522BEE07B249484889B3E8C4DE64966C7BB06E2BE6157605DA1CC4D2E838CF9E",
           "signAlg": "SHA256withECDSA",
           "profile": "airdrop_disRelease.p7b",
           "certpath": "发布证书.cer"
@@ -61,6 +91,12 @@
           "applyToProducts": [
             "default",
             "debug"
+          ]
+        },
+        {
+          "name": "release",
+          "applyToProducts": [
+            "release"
           ]
         }
       ]

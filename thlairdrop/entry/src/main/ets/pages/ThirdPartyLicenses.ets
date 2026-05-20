@@ -1,6 +1,7 @@
 import router from '@ohos.router';
 import { gc, ThemeManager } from '../utils/ThemeManager';
 import { t } from '../utils/I18nManager';
+import { PageHeader } from '../components/PageHeader';
 
 @Entry
 @Component
@@ -14,108 +15,107 @@ struct ThirdPartyLicenses {
   }
 
   build() {
-    Column() {
-      // 顶部导航栏
-      Row() {
-        Button({ type: ButtonType.Circle }) {
-          SymbolGlyph($r('sys.symbol.chevron_left'))
-            .fontSize(24)
-            .fontColor([gc('text_primary')])
-        }
-        .width(48)
-        .height(48)
-        .backgroundColor(gc('transparent'))
-        .onClick(() => {
-          router.back();
+    Stack() {
+      // 1. 背景色容器 (铺满屏幕)
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor(gc('bg_primary', this.themeVersion))
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+
+      // 2. 实际内容容器 (安全区内)
+      Column() {
+        PageHeader({
+          title: t('third_party', this.languageVersion),
+          centerTitle: true,
+          themeVersion: this.themeVersion
         })
         
-        Text(t('third_party', this.languageVersion))
-          .fontSize(20)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(gc('text_primary'))
-          .margin({ left: 8 })
+        Divider()
+          .color(gc('divider', this.themeVersion))
         
-        Blank()
-      }
-      .width('100%')
-      .padding({ left: 16, right: 16, top: 12, bottom: 12 })
-      
-      Divider()
-        .color(gc('divider'))
-      
-      // 第三方组件列表
-      Scroll() {
-        Column() {
-          // LocalSend
+        // 第三方组件列表 (可滚动)
+        Scroll() {
           Column() {
-            Row() {
-              Text('LocalSend')
-                .fontSize(18)
-                .fontWeight(FontWeight.Medium)
-                .fontColor(gc('text_primary'))
-              
-              Blank()
-              
-              Text('MIT License')
-                .fontSize(14)
-                .fontColor(gc('text_secondary'))
-            }
-            .width('100%')
-            .padding({ top: 16, bottom: 8 })
-            
-            Text('跨平台文件传输应用，基于 LocalSend 协议实现局域网设备发现和文件传输功能。')
-              .fontSize(14)
-              .fontColor(gc('text_secondary'))
+            // LocalSend
+            Column() {
+              Row() {
+                Text('LocalSend')
+                  .fontSize(18)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(gc('text_primary', this.themeVersion))
+                
+                Blank()
+                
+                Text('MIT License')
+                  .fontSize(14)
+                  .fontColor(gc('text_secondary', this.themeVersion))
+              }
               .width('100%')
-              .margin({ bottom: 8 })
-            
-            Row() {
-              Text('GitHub: ')
-                .fontSize(14)
-                .fontColor(gc('text_secondary'))
+              .padding({ top: 16, bottom: 8 })
               
-              Text('https://github.com/localsend/localsend')
+              Text(t('third_party_localsend_desc', this.languageVersion))
                 .fontSize(14)
-                .fontColor(gc('accent'))
+                .fontColor(gc('text_secondary', this.themeVersion))
+                .width('100%')
+                .margin({ bottom: 8 })
+              
+              Row() {
+                Text('GitHub: ')
+                  .fontSize(14)
+                  .fontColor(gc('text_secondary', this.themeVersion))
+                
+                Text('https://github.com/localsend/localsend')
+                  .fontSize(14)
+                  .fontColor(gc('accent', this.themeVersion))
+              }
+              .width('100%')
+              .margin({ bottom: 16 })
             }
             .width('100%')
+            .padding({ left: 20, right: 20 })
+            .backgroundColor(gc('bg_secondary', this.themeVersion))
+            .borderRadius(12)
             .margin({ bottom: 16 })
-          }
-          .width('100%')
-          .padding({ left: 20, right: 20 })
-          .backgroundColor(gc('bg_secondary'))
-          .borderRadius(12)
-          .margin({ top: 16, left: 16, right: 16, bottom: 16 })
-          
-          // 说明文字
-          Column() {
-            Text('致谢')
-              .fontSize(16)
-              .fontWeight(FontWeight.Medium)
-              .fontColor(gc('text_primary'))
-              .width('100%')
-              .margin({ bottom: 12 })
             
-            Text('本项目基于 LocalSend 开源项目开发，感谢 LocalSend 团队的开源贡献。LocalSend 提供了跨设备文件传输的核心协议和实现思路。')
-              .fontSize(14)
-              .fontColor(gc('text_secondary'))
-              .width('100%')
-              .lineHeight(22)
+            // 说明文字
+            Column() {
+              Text(t('third_party_ack_title', this.languageVersion))
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(gc('text_primary', this.themeVersion))
+                .width('100%')
+                .margin({ bottom: 12 })
+              
+              Text(t('third_party_ack_content', this.languageVersion))
+                .fontSize(14)
+                .fontColor(gc('text_secondary', this.themeVersion))
+                .width('100%')
+                .lineHeight(22)
+            }
+            .width('100%')
+            .padding(20)
+            .backgroundColor(gc('bg_secondary', this.themeVersion))
+            .borderRadius(12)
+            .margin({ bottom: 32 })
           }
           .width('100%')
-          .padding(20)
-          .backgroundColor(gc('bg_secondary'))
-          .borderRadius(12)
-          .margin({ left: 16, right: 16, bottom: 32 })
+          .padding({ left: 16, right: 16, top: 16, bottom: 40 })
+          .justifyContent(FlexAlign.Start)
+          .alignItems(HorizontalAlign.Start)
         }
         .width('100%')
+        .layoutWeight(1)
+        .scrollBar(BarState.Auto)
+        .align(Alignment.Top)
       }
-      .layoutWeight(1)
-      .scrollBar(BarState.Auto)
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .alignItems(HorizontalAlign.Start)
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(gc('bg_primary'))
     .key(`licenses_column_${this.refreshKey}`)
   }
 }

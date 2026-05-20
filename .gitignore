@@ -11,3 +11,5 @@
 # FVM Version Cache
 .fvm/
 .agent
+agconnect-services.json
+airdrop_devDebug.p7b

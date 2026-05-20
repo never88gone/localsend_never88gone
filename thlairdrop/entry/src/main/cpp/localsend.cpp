@@ -171,18 +171,28 @@ static napi_value SetDeviceCallback(napi_env env, napi_callback_info info) {
  * 启动 LocalSend 服务器
  */
 static napi_value StartServer(napi_env env, napi_callback_info info) {
-    size_t argc = 2;
-    napi_value args[2] = {nullptr};
+    size_t argc = 3;
+    napi_value args[3] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     char alias[256] = {0};
     size_t alias_len = 0;
-    napi_get_value_string_utf8(env, args[0], alias, sizeof(alias), &alias_len);
+    if (argc >= 1 && args[0] != nullptr) {
+        napi_get_value_string_utf8(env, args[0], alias, sizeof(alias), &alias_len);
+    }
 
     int32_t port = 53317;
-    napi_get_value_int32(env, args[1], &port);
+    if (argc >= 2 && args[1] != nullptr) {
+        napi_get_value_int32(env, args[1], &port);
+    }
 
-    bool success = localsend_start_server(alias, static_cast<uint16_t>(port));
+    char local_ip[128] = {0};
+    size_t ip_len = 0;
+    if (argc >= 3 && args[2] != nullptr) {
+        napi_get_value_string_utf8(env, args[2], local_ip, sizeof(local_ip), &ip_len);
+    }
+
+    bool success = localsend_start_server(alias, static_cast<uint16_t>(port), local_ip);
 
     napi_value result;
     napi_get_boolean(env, success, &result);
@@ -340,6 +350,25 @@ static napi_value SetAlias(napi_env env, napi_callback_info info) {
 }
 
 /**
+ * 设置接收端 PIN 码
+ */
+static napi_value SetPinCode(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    char pin[64] = {0};
+    size_t pin_len = 0;
+    napi_get_value_string_utf8(env, args[0], pin, sizeof(pin), &pin_len);
+
+    localsend_set_pin_code(pin);
+
+    napi_value result;
+    napi_get_undefined(env, &result);
+    return result;
+}
+
+/**
  * 获取设备指纹
  */
 static napi_value GetFingerprint(napi_env env, napi_callback_info info) {
@@ -456,6 +485,7 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"getLocalNetworkInfo", nullptr, GetLocalNetworkInfo, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getFingerprint", nullptr, GetFingerprint, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"setAlias", nullptr, SetAlias, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setPinCode", nullptr, SetPinCode, nullptr, nullptr, nullptr, napi_default, nullptr},
         
         // 文件传输
         {"sendRequest", nullptr, SendRequest, nullptr, nullptr, nullptr, napi_default, nullptr},

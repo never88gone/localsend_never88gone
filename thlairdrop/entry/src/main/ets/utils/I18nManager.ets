@@ -68,11 +68,27 @@ interface StringMap {
   input_alias: string;
   change_port: string;
   input_port: string;
+  pin_code: string;
+  change_pin_code: string;
+  input_pin_code: string;
+  pin_code_disabled: string;
+  random_generate: string;
   about_title: string;
   app_name: string;
   copy_right: string;
   privacy_policy: string;
+  privacy_policy_title: string;
+  privacy_policy_content: string;
   third_party: string;
+  third_party_localsend_desc: string;
+  third_party_ack_title: string;
+  third_party_ack_content: string;
+  contact_community: string;
+  contact_github: string;
+  contact_telegram: string;
+  contact_email: string;
+  contact_website: string;
+  copied_toast: string;
   // 帮助页面
   app_intro_title: string;
   app_intro_content: string;
@@ -164,11 +180,27 @@ export class I18nManager {
       input_alias: '请输入设备别名',
       change_port: '修改端口',
       input_port: '请输入端口号 (1024-65535)',
+      pin_code: 'PIN 校验码',
+      change_pin_code: '修改 PIN 码',
+      input_pin_code: '请输入新的 PIN 码(留空表示禁用)',
+      pin_code_disabled: '未启用',
+      random_generate: '随机生成',
       about_title: '关于',
       app_name: '糖葫芦投送',
       copy_right: '© 2026 铭研信息',
       privacy_policy: '隐私政策',
+      privacy_policy_title: '隐私与安全声明',
+      privacy_policy_content: '欢迎使用糖葫芦投送！\n\n本应用是一款【纯单机免服务器】的局域网点对点（P2P）文件与文本传输工具。为了保障您的知情权，在此向您说明：\n\n1. 纯单机运行，无云端收集：本应用不设任何云端服务器，您的所有文件、文本内容及传输记录，均仅在您本地的局域网内设备之间进行直连点对点传递。我们不会、也无法收集或上传您的任何个人隐私数据。\n\n2. 核心权限使用说明：\n• 局域网设备扫描与连接：为寻找并直连同一网络下的其他设备，应用会申请WLAN与网络连接状态权限。\n• 文件读取与写入：为允许您选择发送的文件，以及将接收到的文件保存到本地，应用会申请读取和写入媒体文件的权限。所有文件操作均在您的本地设备上执行。\n\n3. 纯净无广告：本应用不包含任何广告插件与第三方追踪组件，请您放心使用。\n\n我们非常重视您的安全。上述说明均针对本地直连点对点局域网传输所需的必然操作，请您放心使用。',
       third_party: '第三方组件',
+      third_party_localsend_desc: '跨平台文件传输应用，基于 LocalSend 协议实现局域网设备发现和文件传输功能。',
+      third_party_ack_title: '致谢',
+      third_party_ack_content: '本项目基于 LocalSend 开源项目开发，感谢 LocalSend 团队的开源贡献。LocalSend 提供了跨设备文件传输的核心协议和实现思路。',
+      contact_community: '联系与社区',
+      contact_github: 'GitHub 仓库',
+      contact_telegram: 'Telegram 频道',
+      contact_email: '官方邮箱',
+      contact_website: '官方网站',
+      copied_toast: '已复制到剪贴板',
       // 帮助页面
       app_intro_title: '应用介绍',
       app_intro_content: '糖葫芦投送是一款跨平台的文件传输应用，支持在局域网内的设备之间快速传输文件、图片、视频和文本内容。无需互联网连接，保护您的隐私安全。',
@@ -252,11 +284,27 @@ export class I18nManager {
       input_alias: 'Enter alias',
       change_port: 'Change Port',
       input_port: 'Enter port (1024-65535)',
+      pin_code: 'PIN Code',
+      change_pin_code: 'Change PIN Code',
+      input_pin_code: 'Enter new PIN code (leave empty to disable)',
+      pin_code_disabled: 'Disabled',
+      random_generate: 'Random',
       about_title: 'About',
       app_name: 'LocalSend',
       copy_right: '© 2026 Mingyan Info',
       privacy_policy: 'Privacy Policy',
+      privacy_policy_title: 'Privacy & Security Statement',
+      privacy_policy_content: 'Welcome to Tanghulu Share!\n\nThis app is a serverless local network peer-to-peer (P2P) file and text transfer tool. To ensure your right to know, we hereby explain:\n\n1. Serverless operation, no cloud collection: This app does not use any cloud servers. All your files, text content, and transfer records are only transmitted directly between your local devices on the same local network. We do not and cannot collect or upload any of your personal privacy data.\n\n2. Core permissions description:\n• Local network device scanning and connection: To find and directly connect to other devices on the same network, the app requests WLAN and network connection state permissions.\n• File read and write: To allow you to select files to send and save received files to local storage, the app requests permissions to read and write media files. All file operations are executed locally on your device.\n\n3. Ad-free: This app does not contain any ad plugins or third-party tracking components. Please feel free to use it.\n\nWe value your security. The above operations are necessary for local direct P2P transfer. Please feel free to use the app.',
       third_party: 'Third Party',
+      third_party_localsend_desc: 'Cross-platform file transfer application, implementing local network device discovery and file transfer based on the LocalSend protocol.',
+      third_party_ack_title: 'Acknowledgements',
+      third_party_ack_content: 'This project is developed based on the open-source LocalSend project. We thank the LocalSend team for their open-source contributions. LocalSend provides the core protocol and implementation ideas for cross-device file transfer.',
+      contact_community: 'Contact & Community',
+      contact_github: 'GitHub Repository',
+      contact_telegram: 'Telegram Channel',
+      contact_email: 'Official Email',
+      contact_website: 'Official Website',
+      copied_toast: 'Copied to clipboard',
       // 帮助页面
       app_intro_title: 'App Introduction',
       app_intro_content: 'LocalSend is a cross-platform file transfer app that allows fast transfer of files, images, videos, and text between devices on the same local network. No internet connection required, protecting your privacy.',
