@@ -123,6 +123,14 @@ export class LocalSendService {
   private _alias: string = '糖葫芦投送';
   private _port: number = 53317;
 
+  get alias(): string {
+    return this._alias;
+  }
+
+  get port(): number {
+    return this._port;
+  }
+
   private deviceCallbacks: Set<(deviceJson: string) => void> = new Set();
   private fileCallbacks: Set<(requestJson: string) => void> = new Set();
   private progressCallbacks: Set<(id: string, progress: number) => void> = new Set();
@@ -472,20 +480,6 @@ export class LocalSendService {
    */
   setProgressCallback(callback: (id: string, progress: number) => void): void {
     this.registerProgressCallback(callback);
-  }
-
-  /**
-   * 获取当前别名
-   */
-  get alias(): string {
-    return this._alias;
-  }
-
-  /**
-   * 获取当前端口
-   */
-  get port(): number {
-    return this._port;
   }
 }
 

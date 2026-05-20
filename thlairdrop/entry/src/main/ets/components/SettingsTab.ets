@@ -111,17 +111,6 @@ export struct SettingsTab {
     alignment: DialogAlignment.Center
   });
   
-  // 保存目录弹窗控制器
-  private saveDirDialogController: CustomDialogController = new CustomDialogController({
-    builder: SelectPickerDialog({
-      dialogType: 'save_dir',
-      currentValue: this.saveDir,
-      onSelected: (value: string): void => this.onSaveDirSelected(value)
-    }),
-    autoCancel: true,
-    customStyle: true,
-    alignment: DialogAlignment.Center
-  });
   
   aboutToAppear(): void {
     this.context = getContext(this) as common.UIAbilityContext;
@@ -175,13 +164,6 @@ export struct SettingsTab {
     promptAction.showToast({ message: t('quick_save', this.languageVersion) + ': ' + label });
   }
   
-  // 保存目录选择回调
-  private onSaveDirSelected(value: string): void {
-    this.saveDir = value;
-    this.settingsService.setSaveDir(value);
-    promptAction.showToast({ message: t('save_dir', this.languageVersion) + ': ' + t(value, this.languageVersion) });
-  }
-
   build() {
     Column() {
       // 顶部固定标题
@@ -253,13 +235,6 @@ export struct SettingsTab {
                 themeVersion: this.themeVersion,
                 languageVersion: this.languageVersion,
                 onItemClick: (): void => { this.quickSaveDialogController.open(); }
-              })
-              SettingsRowComponent({
-                label: t('save_dir', this.languageVersion),
-                value: t(this.saveDir, this.languageVersion),
-                themeVersion: this.themeVersion,
-                languageVersion: this.languageVersion,
-                onItemClick: (): void => { this.saveDirDialogController.open(); }
               })
             }
             .width('100%')

@@ -55,25 +55,36 @@ export struct ReceiveTab {
   @Link animationAngle: number;
   @Link saveDir: string;
   @Link port: number;
-  @State receiveTasks: TransferTask[] = [];
   @State pendingRequests: Map<string, FileRequestInfo> = new Map();
+  @State activeReceiveTask: TransferTask | null = null;
   
   private settingsService: SettingsService = SettingsService.getInstance();
-  private taskUpdateListener = (tasks: TransferTask[]) => {
-    this.receiveTasks = tasks.filter(t => 
-      t.direction === TransferDirection.Receive && 
-      (t.state === TransferState.Pending || t.state === TransferState.InProgress)
-    );
-  };
   private fileRequestCallback = (requestJson: string) => {
     this.handleFileRequest(requestJson);
   };
 
+  private taskUpdateListener = (tasks: TransferTask[]) => {
+    this.updateActiveReceiveTask();
+  };
+
+  private updateActiveReceiveTask() {
+    const allTasks = fileTransferManager.getAllTasks();
+    const receiveTasks = allTasks.filter(t => 
+      t.direction === TransferDirection.Receive && 
+      (t.state === TransferState.Pending || t.state === TransferState.InProgress)
+    );
+    if (receiveTasks.length > 0) {
+      // 取出最新的那一条（末尾）
+      this.activeReceiveTask = receiveTasks[receiveTasks.length - 1];
+    } else {
+      this.activeReceiveTask = null;
+    }
+  }
+
   aboutToAppear() {
     // 注册文件请求回调
     localSendService.registerFileCallback(this.fileRequestCallback);
-
-    // 注册任务更新监听器
+    this.updateActiveReceiveTask();
     fileTransferManager.onUpdate(this.taskUpdateListener);
   }
 
@@ -82,7 +93,7 @@ export struct ReceiveTab {
     fileTransferManager.offUpdate(this.taskUpdateListener);
   }
 
-  private handleFileRequest(requestJson: string) {
+  private async handleFileRequest(requestJson: string) {
     try {
       const request: FileRequestJson = JSON.parse(requestJson) as FileRequestJson;
       const device: Device = {
@@ -106,19 +117,22 @@ export struct ReceiveTab {
       const totalSize = files.reduce((sum: number, f: FileInfo) => sum + f.size, 0);
 
       const info: FileRequestInfo = { device, files, totalSize };
+
+      // 检查自动接受
+      const settings = await this.settingsService.getSettings();
+      const isFav = device.fingerprint ? settings.favorites.includes(device.fingerprint) : false;
+      
+      // 0: 关, 1: 收藏, 2: 总是
+      if (settings.quickSaveMode === 2 || (settings.quickSaveMode === 1 && isFav)) {
+        console.info(`[ReceiveTab] Auto-accept enabled. Skip showing request ${request.id} on home screen.`);
+        return;
+      }
+
       this.pendingRequests.set(request.id, info);
       this.pendingRequests = new Map(this.pendingRequests);
     } catch (e) {
       console.error('Failed to parse file request:', e);
     }
-  }
-
-  private updateTasks() {
-    const allTasks = fileTransferManager.getAllTasks();
-    this.receiveTasks = allTasks.filter(t => 
-      t.direction === TransferDirection.Receive && 
-      (t.state === TransferState.Pending || t.state === TransferState.InProgress)
-    );
   }
 
   private async acceptRequest(requestId: string) {
@@ -137,15 +151,7 @@ export struct ReceiveTab {
     // 注册回调
     fileTransferManager.registerCallback(task.id, {
       onProgress: (task: TransferTask) => {
-        this.updateTasks();
-      },
-      onComplete: (task: TransferTask) => {
-        this.updateTasks();
-        promptAction.showToast({ message: t('receive_complete', this.languageVersion) });
-      },
-      onError: (task: TransferTask, error: string) => {
-        this.updateTasks();
-        promptAction.showToast({ message: `${t('receive_failed', this.languageVersion)}: ${error}` });
+        // 无需在首页更新
       }
     });
 
@@ -344,29 +350,7 @@ export struct ReceiveTab {
             .margin({ top: 20 })
           }
 
-          // 传输进度
-          if (this.receiveTasks.length > 0) {
-            Column() {
-              Text(t('in_progress', this.languageVersion))
-                .fontSize(18)
-                .fontWeight(FontWeight.Medium)
-                .fontColor(gc('text_primary', this.themeVersion))
-                .width('100%')
-                .margin({ bottom: 12 })
 
-              ForEach(this.receiveTasks, (task: TransferTask) => {
-                TransferProgressCard({
-                  task: task,
-                  onCancel: (taskId: string) => {
-                    fileTransferManager.cancelTransfer(taskId);
-                    this.updateTasks();
-                  }
-                })
-              })
-            }
-            .width('100%')
-            .margin({ top: 20 })
-          }
 
           // 高级信息卡片
           if (this.showAdvancedInfo) {
@@ -432,7 +416,50 @@ export struct ReceiveTab {
             .padding(2)
           }
           .width('100%')
-          .margin({ top: 20, bottom: 40 })
+          .margin({ top: 20, bottom: 20 })
+
+          // 底部传输状态与历史跳转卡片
+          Column() {
+            if (this.activeReceiveTask) {
+              Text(t('current_receiving', this.languageVersion))
+                .fontSize(14)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(gc('text_secondary', this.themeVersion))
+                .width('100%')
+                .margin({ bottom: 8 })
+
+              TransferProgressCard({
+                task: this.activeReceiveTask,
+                onCancel: (taskId: string) => {
+                  fileTransferManager.cancelTransfer(taskId);
+                  this.updateActiveReceiveTask();
+                }
+              })
+            } else {
+              Button({ type: ButtonType.Normal }) {
+                Row() {
+                  SymbolGlyph($r('sys.symbol.clock_fill'))
+                    .fontSize(16)
+                    .fontColor([gc('accent', this.themeVersion)])
+                    .margin({ right: 8 })
+                  Text(t('view_history', this.languageVersion))
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor(gc('accent', this.themeVersion))
+                }
+                .justifyContent(FlexAlign.Center)
+              }
+              .width('100%')
+              .height(48)
+              .backgroundColor(gc('accent_bg', this.themeVersion))
+              .borderRadius(12)
+              .onClick(() => {
+                router.pushUrl({ url: 'pages/TransferHistory' });
+              })
+            }
+          }
+          .width('100%')
+          .margin({ top: 10, bottom: 40 })
         }
         .width('100%')
         .padding({ left: 16, right: 16 })

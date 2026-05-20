@@ -19,6 +19,7 @@
 #include <functional>
 #include <iomanip>
 #include <cstdio>
+#include <condition_variable>
 
 // HarmonyOS socket 头文件
 #include <sys/socket.h>
@@ -153,6 +154,7 @@ typedef void (*LocalsendDeviceCallback)(const char* device_json);
 typedef void (*LocalsendFileCallback)(const char* request_json);
 
 static std::mutex g_mutex;
+static std::condition_variable g_cv;
 static std::atomic<bool> g_server_running{false};
 static std::atomic<bool> g_discovery_running{false};
 static std::string g_device_alias = "HarmonyOS Device";
@@ -543,8 +545,9 @@ static void discovery_loop() {
         {
             std::lock_guard<std::mutex> lock(g_mutex);
             std::string device_json = buffer;
-            if (device_json.front() == '{') {
-                device_json.insert(1, "\"address\":\"" + std::string(sender_ip) + "\",\"ip\":\"" + std::string(sender_ip) + "\",");
+            size_t brace_pos = device_json.find('{');
+            if (brace_pos != std::string::npos) {
+                device_json.insert(brace_pos + 1, "\"address\":\"" + std::string(sender_ip) + "\",\"ip\":\"" + std::string(sender_ip) + "\",");
             }
             g_discovered_devices[sender_ip] = device_json;
             g_device_timestamps[sender_ip] = std::chrono::steady_clock::now();
@@ -580,24 +583,48 @@ static std::string handle_info_request() {
 
 // 简单的 JSON 解析辅助函数
 static std::string json_extract_string(const std::string& json, const std::string& key) {
-    std::string search = "\"" + key + "\":\"";
+    std::string search = "\"" + key + "\"";
     size_t pos = json.find(search);
     if (pos == std::string::npos) return "";
     
     pos += search.length();
-    size_t end = json.find("\"", pos);
+    size_t colon_pos = json.find(':', pos);
+    if (colon_pos == std::string::npos) return "";
+    
+    pos = colon_pos + 1;
+    while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\r' || json[pos] == '\n')) {
+        pos++;
+    }
+    
+    if (pos >= json.size() || json[pos] != '"') return "";
+    pos++; // 跳过开引号
+    
+    size_t end = json.find('"', pos);
     if (end == std::string::npos) return "";
     
     return json.substr(pos, end - pos);
 }
 
 static int64_t json_extract_number(const std::string& json, const std::string& key) {
-    std::string search = "\"" + key + "\":";
+    std::string search = "\"" + key + "\"";
     size_t pos = json.find(search);
     if (pos == std::string::npos) return 0;
     
     pos += search.length();
-    return std::stoll(json.substr(pos));
+    size_t colon_pos = json.find(':', pos);
+    if (colon_pos == std::string::npos) return 0;
+    
+    pos = colon_pos + 1;
+    while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\r' || json[pos] == '\n')) {
+        pos++;
+    }
+    
+    if (pos >= json.size()) return 0;
+    try {
+        return std::stoll(json.substr(pos));
+    } catch (...) {
+        return 0;
+    }
 }
 
 static std::string generate_request_id() {
@@ -713,16 +740,7 @@ static std::string handle_prepare_upload(const std::string& body, const std::str
                         // fileType
                         item.type = json_extract_string(obj_str, "fileType");
                         // size
-                        size_t size_pos = obj_str.find("\"size\":");
-                        if (size_pos != std::string::npos) {
-                            size_pos += 7;
-                            while (size_pos < obj_str.size() && (obj_str[size_pos] == ' ')) size_pos++;
-                            size_t size_end = obj_str.find_first_of(",}", size_pos);
-                            if (size_end != std::string::npos) {
-                                try { item.size = std::stoll(obj_str.substr(size_pos, size_end - size_pos)); }
-                                catch(...) { item.size = 0; }
-                            }
-                        }
+                        item.size = json_extract_number(obj_str, "size");
 
                         fr.total_size += item.size;
                         fr.file_items.push_back(std::move(item));
@@ -769,16 +787,7 @@ static std::string handle_prepare_upload(const std::string& body, const std::str
                         if (item.name.empty()) item.name = json_extract_string(obj_str, "name");
                         item.type = json_extract_string(obj_str, "fileType");
 
-                        size_t size_pos = obj_str.find("\"size\":");
-                        if (size_pos != std::string::npos) {
-                            size_pos += 7;
-                            while (size_pos < obj_str.size() && obj_str[size_pos] == ' ') size_pos++;
-                            size_t size_end = obj_str.find_first_of(",}", size_pos);
-                            if (size_end != std::string::npos) {
-                                try { item.size = std::stoll(obj_str.substr(size_pos, size_end - size_pos)); }
-                                catch(...) { item.size = 0; }
-                            }
-                        }
+                        item.size = json_extract_number(obj_str, "size");
 
                         fr.total_size += item.size;
                         fr.file_items.push_back(std::move(item));
@@ -814,6 +823,30 @@ static std::string handle_prepare_upload(const std::string& body, const std::str
         g_file_callback(callback_json.str().c_str());
     }
 
+    // 存储请求 (MOVE MUST BE LAST)
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        g_pending_requests[request_id] = std::move(fr);
+    }
+
+    // 阻塞等待用户接受或拒绝（或者超时）
+    std::unique_lock<std::mutex> u_lock(g_mutex);
+    bool status = g_cv.wait_for(u_lock, std::chrono::seconds(60), [request_id]() {
+        auto it = g_pending_requests.find(request_id);
+        if (it == g_pending_requests.end()) return true; // 被删了，视为拒绝/退出
+        return it->second.accepted || it->second.is_cancelled;
+    });
+
+    // 唤醒后，检查最终状态
+    auto it = g_pending_requests.find(request_id);
+    if (!status || it == g_pending_requests.end() || it->second.is_cancelled || !it->second.accepted) {
+        LOGW("prepare_upload rejected or timed out for session: %s", request_id.c_str());
+        if (it != g_pending_requests.end()) {
+            g_pending_requests.erase(it);
+        }
+        return http_response(403, "{\"error\":\"Request rejected\"}");
+    }
+
     // 返回响应
     std::ostringstream response;
     response << "{";
@@ -822,19 +855,13 @@ static std::string handle_prepare_upload(const std::string& body, const std::str
 
     // 为每个文件生成 token
     // 使用原始 fileId 作为 token，使 handle_upload 可以直接通过 fileId 匹配
-    for (size_t i = 0; i < fr.file_items.size(); ++i) {
+    for (size_t i = 0; i < it->second.file_items.size(); ++i) {
         if (i > 0) response << ",";
-        const std::string& fid = fr.file_items[i].id.empty() ? std::to_string(i) : fr.file_items[i].id;
+        const std::string& fid = it->second.file_items[i].id.empty() ? std::to_string(i) : it->second.file_items[i].id;
         // token 值直接等于 fileId，方便 handle_upload 匹配
         response << "\"" << fid << "\":\"" << fid << "\"";
     }
     response << "}}";
-
-    // 存储请求 (MOVE MUST BE LAST)
-    {
-        std::lock_guard<std::mutex> lock(g_mutex);
-        g_pending_requests[request_id] = std::move(fr);
-    }
 
     return http_response(200, response.str());
 }
@@ -931,6 +958,7 @@ static std::string handle_upload(const std::string& path, const std::string& bod
         if (req->is_cancelled) {
             fclose(fp);
             LOGW("Transfer %s cancelled by user", session_id.c_str());
+            req->progress = 101;
             trigger_progress(session_id, 101);
             return http_response(500, "{\"error\":\"Transfer cancelled\"}");
         }
@@ -963,6 +991,7 @@ static std::string handle_upload(const std::string& path, const std::string& bod
         trigger_progress(session_id, 100);
         return http_response(200, "{\"success\":true}");
     } else {
+        req->progress = -1;
         trigger_progress(session_id, -1); // 触发失败进度回调
         return http_response(500, "{\"error\":\"Incomplete upload\"}");
     }
@@ -1065,8 +1094,9 @@ static std::string handle_request(const std::string& method, const std::string& 
         {
             std::lock_guard<std::mutex> lock(g_mutex);
             std::string device_json = body;
-            if (device_json.front() == '{') {
-                device_json.insert(1, "\"address\":\"" + sender_ip + "\",\"ip\":\"" + sender_ip + "\",");
+            size_t brace_pos = device_json.find('{');
+            if (brace_pos != std::string::npos) {
+                device_json.insert(brace_pos + 1, "\"address\":\"" + sender_ip + "\",\"ip\":\"" + sender_ip + "\",");
             }
             g_discovered_devices[sender_ip] = device_json;
             g_device_timestamps[sender_ip] = std::chrono::steady_clock::now();
@@ -1089,6 +1119,7 @@ static std::string handle_request(const std::string& method, const std::string& 
             if (it != g_pending_requests.end()) {
                 it->second.is_cancelled = true;
                 LOGI("Session %s cancelled by remote peer", session_id.c_str());
+                it->second.progress = -1;
                 trigger_progress(session_id, -1);
                 return http_response(200, "{\"success\":true}");
             }
@@ -1097,6 +1128,83 @@ static std::string handle_request(const std::string& method, const std::string& 
     }
     
     return http_response(404, "{\"error\":\"Not found\"}");
+}
+
+static void handle_client_connection(int client, struct sockaddr_in client_addr) {
+    // 获取客户端 IP
+    char client_ip[INET_ADDRSTRLEN] = {0};
+    inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+    std::string sender_ip(client_ip);
+    
+    // 设置超时防止挂起
+    set_socket_timeouts(client, 15);
+    
+    // 读取请求
+    char buffer[BUFFER_SIZE];
+    ssize_t len = recv(client, buffer, BUFFER_SIZE - 1, 0);
+    if (len <= 0) {
+        close(client);
+        return;
+    }
+    buffer[len] = '\0';
+    
+    // 解析请求
+    std::string request_str(buffer, len);
+    size_t method_end = request_str.find(' ');
+    size_t path_end = request_str.find(' ', method_end + 1);
+    size_t body_start = request_str.find("\r\n\r\n");
+    
+    // 解析 Content-Length
+    size_t content_length = 0;
+    size_t cl_pos = request_str.find("Content-Length:");
+    if (cl_pos == std::string::npos) {
+        cl_pos = request_str.find("content-length:");
+    }
+    if (cl_pos != std::string::npos) {
+        size_t cl_end = request_str.find("\r\n", cl_pos);
+        if (cl_end != std::string::npos) {
+            std::string cl_str = request_str.substr(cl_pos + 15, cl_end - cl_pos - 15);
+            // 去除空格
+            cl_str.erase(0, cl_str.find_first_not_of(" \t"));
+            try {
+                content_length = std::stoul(cl_str);
+            } catch (...) {
+                content_length = 0;
+            }
+        }
+    }
+    
+    if (method_end != std::string::npos && path_end != std::string::npos) {
+        std::string method = request_str.substr(0, method_end);
+        std::string path = request_str.substr(method_end + 1, path_end - method_end - 1);
+        std::string query_params = "";
+        size_t q_pos = path.find('?');
+        if (q_pos != std::string::npos) {
+            query_params = path.substr(q_pos + 1);
+            path = path.substr(0, q_pos);
+        }
+        std::string body = (body_start != std::string::npos) ? request_str.substr(body_start + 4) : "";
+        
+        // 循环读取未完结的 HTTP Body 分包，确保解析完整
+        bool is_upload = (method == "POST" && (path.find("/api/upload/") == 0 || 
+                                               path == "/api/localsend/v2/upload" || 
+                                               path == "/api/localsend/v1/send"));
+        if (!is_upload && content_length > 0 && body.size() < content_length) {
+            size_t remaining = content_length - body.size();
+            std::vector<char> temp_buf(BUFFER_SIZE);
+            while (remaining > 0) {
+                ssize_t read_len = recv(client, temp_buf.data(), std::min(remaining, (size_t)BUFFER_SIZE), 0);
+                if (read_len <= 0) break;
+                body.append(temp_buf.data(), read_len);
+                remaining -= read_len;
+            }
+        }
+        
+        std::string response = handle_request(method, path, body, sender_ip, content_length, client, query_params);
+        send(client, response.c_str(), response.size(), 0);
+    }
+    
+    close(client);
 }
 
 static void http_loop() {
@@ -1119,7 +1227,7 @@ static void http_loop() {
         return;
     }
     
-    listen(g_http_socket, 5);
+    listen(g_http_socket, 10); // 增加 backlog 到 10
     
     while (g_server_running) {
         struct pollfd pfd;
@@ -1134,78 +1242,8 @@ static void http_loop() {
         int client = accept(g_http_socket, (struct sockaddr*)&client_addr, &client_len);
         if (client < 0) continue;
         
-        // 获取客户端 IP
-        char client_ip[INET_ADDRSTRLEN] = {0};
-        inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
-        std::string sender_ip(client_ip);
-        
-        // 读取请求
-        char buffer[BUFFER_SIZE];
-        ssize_t len = recv(client, buffer, BUFFER_SIZE - 1, 0);
-        if (len <= 0) {
-            close(client);
-            continue;
-        }
-        buffer[len] = '\0';
-        
-        // 解析请求
-        std::string request_str(buffer);
-        size_t method_end = request_str.find(' ');
-        size_t path_end = request_str.find(' ', method_end + 1);
-        size_t body_start = request_str.find("\r\n\r\n");
-        
-        // 解析 Content-Length
-        size_t content_length = 0;
-        size_t cl_pos = request_str.find("Content-Length:");
-        if (cl_pos == std::string::npos) {
-            cl_pos = request_str.find("content-length:");
-        }
-        if (cl_pos != std::string::npos) {
-            size_t cl_end = request_str.find("\r\n", cl_pos);
-            if (cl_end != std::string::npos) {
-                std::string cl_str = request_str.substr(cl_pos + 15, cl_end - cl_pos - 15);
-                // 去除空格
-                cl_str.erase(0, cl_str.find_first_not_of(" \t"));
-                try {
-                    content_length = std::stoul(cl_str);
-                } catch (...) {
-                    content_length = 0;
-                }
-            }
-        }
-        
-        if (method_end != std::string::npos && path_end != std::string::npos) {
-            std::string method = request_str.substr(0, method_end);
-            std::string path = request_str.substr(method_end + 1, path_end - method_end - 1);
-            std::string query_params = "";
-            size_t q_pos = path.find('?');
-            if (q_pos != std::string::npos) {
-                query_params = path.substr(q_pos + 1);
-                path = path.substr(0, q_pos);
-            }
-            std::string body = (body_start != std::string::npos) ? request_str.substr(body_start + 4) : "";
-            
-            // 循环读取未完结的 HTTP Body 分包，确保解析完整
-            // ！！！注意！！！：如果是大文件上传请求，切勿在内存中循环读取完整 Body，否则会引起 OOM (内存溢出崩溃)
-            bool is_upload = (method == "POST" && (path.find("/api/upload/") == 0 || 
-                                                   path == "/api/localsend/v2/upload" || 
-                                                   path == "/api/localsend/v1/send"));
-            if (!is_upload && content_length > 0 && body.size() < content_length) {
-                size_t remaining = content_length - body.size();
-                std::vector<char> temp_buf(BUFFER_SIZE);
-                while (remaining > 0) {
-                    ssize_t read_len = recv(client, temp_buf.data(), std::min(remaining, (size_t)BUFFER_SIZE), 0);
-                    if (read_len <= 0) break;
-                    body.append(temp_buf.data(), read_len);
-                    remaining -= read_len;
-                }
-            }
-            
-            std::string response = handle_request(method, path, body, sender_ip, content_length, client, query_params);
-            send(client, response.c_str(), response.size(), 0);
-        }
-        
-        close(client);
+        // 每一个客户端连接都由独立线程来处理，避免阻塞主循环
+        std::thread(handle_client_connection, client, client_addr).detach();
     }
 }
 
@@ -1381,7 +1419,7 @@ static void send_file_thread(std::string target_ip, uint16_t port, std::string s
                 // 已成功关联 FILE*，设置 file_fds[i] = -1 以免析构时重复关闭
                 req->file_fds[i] = -1;
             } else {
-                LOGE("Failed to fdopen fd %d, error: %d", file_fd, errno);
+                LOGE("Failed to fdopen fd %{public}d, error: %{public}d", file_fd, errno);
                 close(file_fd);
                 req->file_fds[i] = -1;
             }
@@ -1403,7 +1441,7 @@ static void send_file_thread(std::string target_ip, uint16_t port, std::string s
         // 创建连接
         int sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock < 0) {
-            LOGE("Failed to create socket for upload to %s", target_ip.c_str());
+            LOGE("Failed to create socket for upload to %{public}s", target_ip.c_str());
             fclose(fp);
             continue;
         }
@@ -1418,7 +1456,7 @@ static void send_file_thread(std::string target_ip, uint16_t port, std::string s
         inet_pton(AF_INET, target_ip.c_str(), &addr.sin_addr);
         
         if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-            LOGE("Failed to connect to %s:%d for upload", target_ip.c_str(), port);
+            LOGE("Failed to connect to %{public}s:%{public}d for upload", target_ip.c_str(), port);
             fclose(fp);
             close(sock);
             continue;
@@ -1442,7 +1480,7 @@ static void send_file_thread(std::string target_ip, uint16_t port, std::string s
         while (file_sent < file_size) {
             // 检查取消
             if (req->is_cancelled) {
-                LOGW("Upload %s cancelled by user", session_id.c_str());
+                LOGW("Upload %{public}s cancelled by user", session_id.c_str());
                 break;
             }
 
@@ -1451,7 +1489,7 @@ static void send_file_thread(std::string target_ip, uint16_t port, std::string s
             
             ssize_t s = send(sock, buffer, n, 0);
             if (s <= 0) {
-                LOGE("Send failed for session %s, error: %d", session_id.c_str(), errno);
+                LOGE("Send failed for session %{public}s, error: %{public}d", session_id.c_str(), errno);
                 break;
             }
             
@@ -1474,173 +1512,212 @@ static void send_file_thread(std::string target_ip, uint16_t port, std::string s
     }
     
     if (req->is_cancelled) {
-        LOGI("Finalizing cancelled session: %s", session_id.c_str());
+        LOGI("Finalizing cancelled session: %{public}s", session_id.c_str());
+        req->progress = 101;
         trigger_progress(session_id, 101); // 101 表示取消
     } else if (total_sent_all >= req->total_size) {
-        LOGI("Upload session completed successfully: %s", session_id.c_str());
+        LOGI("Upload session completed successfully: %{public}s", session_id.c_str());
         req->progress = 100;
         trigger_progress(session_id, 100);
     } else {
-        LOGE("Upload session failed: %s", session_id.c_str());
+        LOGE("Upload session failed: %{public}s", session_id.c_str());
+        req->progress = -1;
         trigger_progress(session_id, -1); // 触发失败进度回调
     }
 }
 
 bool localsend_send_request(const char* target_ip, uint16_t port, const char* files_json) {
     if (!target_ip || !files_json) return false;
-    
-    // 解析 files_json 获取文件信息
+
+    // 解析 files_json 数组 (ArkTS FileInfo[] JSON 格式)
+    // 结构: [{"id":"...","fileName":"...","size":123,"filePath":"/cache/..."}]
     std::string files_str(files_json);
     std::vector<std::string> filenames;
     std::vector<std::string> filepaths;
+    std::vector<std::string> fileids;
     std::vector<int64_t> file_sizes;
-    std::vector<int> file_fds;
     int64_t total_size = 0;
-    
-    size_t obj_start = 0;
-    while ((obj_start = files_str.find('{', obj_start)) != std::string::npos) {
-        size_t obj_end = files_str.find('}', obj_start);
+
+    // 使用括号深度匹配，正确处理嵌套结构
+    size_t pos = 0;
+    while (pos < files_str.size()) {
+        size_t obj_start = files_str.find('{', pos);
+        if (obj_start == std::string::npos) break;
+
+        // 找到匹配的 }
+        int depth = 0;
+        size_t obj_end = std::string::npos;
+        for (size_t i = obj_start; i < files_str.size(); ++i) {
+            if (files_str[i] == '{') depth++;
+            else if (files_str[i] == '}') {
+                depth--;
+                if (depth == 0) { obj_end = i; break; }
+            }
+        }
         if (obj_end == std::string::npos) break;
-        
+
         std::string obj = files_str.substr(obj_start, obj_end - obj_start + 1);
-        
+
+        // 解析 id
+        std::string file_id = json_extract_string(obj, "id");
+        if (file_id.empty()) file_id = std::to_string(fileids.size());
+        fileids.push_back(file_id);
+
         // 解析 fileName
-        std::string filename;
-        size_t fn_pos = obj.find("\"fileName\":\"");
-        if (fn_pos != std::string::npos) {
-            fn_pos += 12;
-            size_t end = obj.find("\"", fn_pos);
-            if (end != std::string::npos) {
-                filename = obj.substr(fn_pos, end - fn_pos);
-            }
-        }
+        std::string filename = json_extract_string(obj, "fileName");
         filenames.push_back(filename);
-        
-        // 解析 filePath
-        std::string filepath;
-        size_t fp_pos = obj.find("\"filePath\":\"");
-        if (fp_pos != std::string::npos) {
-            fp_pos += 12;
-            size_t end = obj.find("\"", fp_pos);
-            if (end != std::string::npos) {
-                filepath = obj.substr(fp_pos, end - fp_pos);
-            }
-        }
+
+        // 解析 filePath（cacheDir 下的真实路径）
+        std::string filepath = json_extract_string(obj, "filePath");
         filepaths.push_back(filepath);
-        
+
         // 解析 size
-        int64_t size_val = 0;
-        size_t sz_pos = obj.find("\"size\":");
-        if (sz_pos != std::string::npos) {
-            sz_pos += 7;
-            size_t end = obj.find_first_of(",}", sz_pos);
-            if (end != std::string::npos) {
-                size_val = std::stoll(obj.substr(sz_pos, end - sz_pos));
-            }
-        }
+        int64_t size_val = json_extract_number(obj, "size");
         file_sizes.push_back(size_val);
         total_size += size_val;
-        
-        // 解析 fd
-        int fd_val = -1;
-        size_t fd_pos = obj.find("\"fd\":");
-        if (fd_pos != std::string::npos) {
-            fd_pos += 5;
-            size_t end = obj.find_first_of(",}", fd_pos);
-            if (end != std::string::npos) {
-                fd_val = std::stoi(obj.substr(fd_pos, end - fd_pos));
-            }
-        }
-        file_fds.push_back(fd_val);
-        
-        obj_start = obj_end + 1;
+
+        pos = obj_end + 1;
     }
 
-    // 创建 socket
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        for (int fd : file_fds) {
-            if (fd >= 0) close(fd);
-        }
+    if (fileids.empty()) {
+        LOGE("No files parsed from JSON: %s", files_json);
         return false;
     }
-    
+
+    // 创建 socket 连接
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        LOGE("localsend_send_request: Failed to create socket, errno = %d", errno);
+        return false;
+    }
+
+    set_socket_timeouts(sock, 10);
+
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     inet_pton(AF_INET, target_ip, &addr.sin_addr);
-    
+
+    LOGI("localsend_send_request: Connecting to %{public}s:%{public}d", target_ip, port);
     if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        LOGE("localsend_send_request: Connection to %{public}s:%{public}d failed, errno = %{public}d", target_ip, port, errno);
         close(sock);
-        for (int fd : file_fds) {
-            if (fd >= 0) close(fd);
-        }
         return false;
     }
-    
-    // 发送准备上传请求
+    LOGI("localsend_send_request: Connected to %{public}s:%{public}d", target_ip, port);
+
+    // 构造 LocalSend v2 格式的 prepare-upload body
+    // {"info":{"alias":"...","version":"2.0","deviceModel":"HarmonyOS","deviceType":"mobile","fingerprint":"...","port":53317,"protocol":"http","download":false},"files":{"fileId":{"id":"...","fileName":"...","size":123,"fileType":"application/octet-stream","preview":null}}}
+    std::ostringstream body;
+    body << "{";
+    body << "\"info\":{";
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        body << "\"alias\":\"" << json_escape(g_device_alias) << "\",";
+        body << "\"version\":\"2.0\",";
+        body << "\"deviceModel\":\"HarmonyOS\",";
+        body << "\"deviceType\":\"mobile\",";
+        body << "\"fingerprint\":\"" << g_device_fingerprint << "\",";
+        body << "\"port\":" << g_server_port << ",";
+    }
+    body << "\"protocol\":\"http\",";
+    body << "\"download\":false";
+    body << "},";
+    body << "\"files\":{";
+    for (size_t i = 0; i < fileids.size(); ++i) {
+        if (i > 0) body << ",";
+        body << "\"" << fileids[i] << "\":{";
+        body << "\"id\":\"" << fileids[i] << "\",";
+        body << "\"fileName\":\"" << json_escape(filenames[i]) << "\",";
+        body << "\"size\":" << file_sizes[i] << ",";
+        // 简单根据扩展名推断 MIME
+        std::string ext;
+        size_t dot = filenames[i].rfind('.');
+        if (dot != std::string::npos) ext = filenames[i].substr(dot + 1);
+        std::string mime = "application/octet-stream";
+        if (ext == "jpg" || ext == "jpeg") mime = "image/jpeg";
+        else if (ext == "png") mime = "image/png";
+        else if (ext == "gif") mime = "image/gif";
+        else if (ext == "mp4") mime = "video/mp4";
+        else if (ext == "mp3") mime = "audio/mpeg";
+        else if (ext == "txt") mime = "text/plain";
+        else if (ext == "pdf") mime = "application/pdf";
+        body << "\"fileType\":\"" << mime << "\"";
+        body << "}";
+    }
+    body << "}}";
+
+    std::string body_str = body.str();
+
+    // 发送 prepare-upload 请求
     std::ostringstream request;
-    request << "POST /api/prepare-upload HTTP/1.1\r\n";
+    request << "POST /api/localsend/v2/prepare-upload HTTP/1.1\r\n";
     request << "Host: " << target_ip << ":" << port << "\r\n";
     request << "Content-Type: application/json\r\n";
-    request << "Content-Length: " << strlen(files_json) << "\r\n";
+    request << "Content-Length: " << body_str.size() << "\r\n";
     request << "Connection: close\r\n";
     request << "\r\n";
-    request << files_json;
-    
+    request << body_str;
+
     std::string req_str = request.str();
+    LOGI("localsend_send_request: Sending prepare-upload request to %{public}s:%{public}d, content:\n%{public}s", target_ip, port, req_str.c_str());
     send(sock, req_str.c_str(), req_str.size(), 0);
-    
+
     // 读取响应
-    char buffer[4096];
+    char buffer[8192];
     ssize_t len = recv(sock, buffer, sizeof(buffer) - 1, 0);
     close(sock);
-    
+
     if (len > 0) {
         buffer[len] = '\0';
         std::string response(buffer);
+        LOGI("localsend_send_request: Received response from %{public}s:%{public}d, size = %{public}zd, content:\n%{public}s", target_ip, port, len, response.c_str());
         if (response.find("200 OK") != std::string::npos) {
             // 解析 sessionId
             std::string session_id = json_extract_string(response, "sessionId");
             if (session_id.empty()) {
                 session_id = json_extract_string(response, "id");
             }
-            
+
             if (!session_id.empty()) {
+                LOGI("localsend_send_request: Handshake success, session = %{public}s", session_id.c_str());
                 // 创建任务记录
                 FileRequest fr;
                 fr.id = session_id;
                 fr.sender_ip = target_ip;
                 for (size_t i = 0; i < filenames.size(); ++i) {
                     FileItem item;
+                    item.id = fileids[i];
                     item.name = filenames[i];
                     item.size = (i < file_sizes.size()) ? file_sizes[i] : 0;
                     fr.file_items.push_back(std::move(item));
                 }
                 fr.file_paths = filepaths;
-                fr.file_fds = std::move(file_fds);
                 fr.total_size = total_size;
                 fr.progress = 0;
                 fr.accepted = true;
                 fr.is_sending = true;
-                
+
                 {
                     std::lock_guard<std::mutex> lock(g_mutex);
                     g_pending_requests[session_id] = std::move(fr);
                 }
-                
+
                 // 启动发送线程
                 std::thread(send_file_thread, std::string(target_ip), port, session_id).detach();
                 return true;
+            } else {
+                LOGE("localsend_send_request: Failed to parse sessionId/id from response: %{public}s", response.c_str());
             }
+        } else {
+            LOGW("localsend_send_request: prepare-upload rejected, response: %{public}s", response.c_str());
         }
+    } else {
+        LOGE("localsend_send_request: Failed to receive response from %{public}s:%{public}d, len = %{public}zd, errno = %{public}d. Request content was:\n%{public}s", 
+             target_ip, port, len, errno, req_str.c_str());
     }
-    
-    // 主动关闭 fds 以免泄漏
-    for (int fd : file_fds) {
-        if (fd >= 0) close(fd);
-    }
+
     return false;
 }
 
@@ -1699,30 +1776,37 @@ char* localsend_rust_hello(void) {
 bool localsend_accept_request(const char* request_id, const char* save_dir) {
     if (!request_id) return false;
     
-    std::lock_guard<std::mutex> lock(g_mutex);
-    
-    auto it = g_pending_requests.find(request_id);
-    if (it == g_pending_requests.end()) return false;
-    
-    it->second.accepted = true;
-    if (save_dir) {
-        it->second.save_dir = save_dir;
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        
+        auto it = g_pending_requests.find(request_id);
+        if (it == g_pending_requests.end()) return false;
+        
+        it->second.accepted = true;
+        if (save_dir) {
+            it->second.save_dir = save_dir;
+        }
     }
     
-    // TODO: 启动文件接收线程
-    
+    // 唤醒挂起在 prepare-upload 的线程
+    g_cv.notify_all();
     return true;
 }
 
 bool localsend_reject_request(const char* request_id) {
     if (!request_id) return false;
     
-    std::lock_guard<std::mutex> lock(g_mutex);
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        
+        auto it = g_pending_requests.find(request_id);
+        if (it == g_pending_requests.end()) return false;
+        
+        it->second.is_cancelled = true;
+    }
     
-    auto it = g_pending_requests.find(request_id);
-    if (it == g_pending_requests.end()) return false;
-    
-    g_pending_requests.erase(it);
+    // 唤醒挂起在 prepare-upload 的线程
+    g_cv.notify_all();
     return true;
 }
 

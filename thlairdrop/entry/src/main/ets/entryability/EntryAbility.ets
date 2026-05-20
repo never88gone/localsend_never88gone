@@ -4,6 +4,7 @@ import { window } from '@kit.ArkUI';
 import { ThemeManager } from '../utils/ThemeManager';
 import { checkCriticalSysCapsOnStartup } from '../common/SysCapChecker';
 import { SettingsService } from '../services/SettingsService';
+import { historyService } from '../services/HistoryService';
 
 const DOMAIN = 0x0000;
 
@@ -39,6 +40,10 @@ export default class EntryAbility extends UIAbility {
     try {
       const settingsService = SettingsService.getInstance();
       await settingsService.init(this.context);
+      
+      // 初始化历史记录服务
+      await historyService.init(this.context);
+      
       const settings = await settingsService.getSettings();
       
       // 提前将主题设置应用到AppStorage

@@ -17,6 +17,7 @@ interface RawDevice {
   version?: string;
   port?: number;
   https?: boolean;
+  protocol?: string;
   fingerprint?: string;
   deviceModel?: string;
   deviceType?: string;
@@ -78,7 +79,7 @@ struct Index {
         alias: d.alias || '',
         version: d.version || '',
         port: d.port || 53317,
-        https: d.https || false,
+        https: d.https !== undefined ? d.https : (d.protocol === 'http' ? false : true),
         fingerprint: d.fingerprint || '',
         deviceModel: d.deviceModel || 'Unknown',
         deviceType: (d.deviceType || d.device_type || 'mobile') as DeviceType,

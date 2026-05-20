@@ -4,6 +4,9 @@ import { BusinessError } from '@ohos.base';
 import promptAction from '@ohos.promptAction';
 import router from '@ohos.router';
 import fs from '@ohos.file.fs';
+import wantConstant from '@ohos.app.ability.wantConstant';
+import Want from '@ohos.app.ability.Want';
+import common from '@ohos.app.ability.common';
 import { fileTransferManager, TransferTask, TransferState, TransferDirection } from '../service/FileTransferManager';
 import { localSendService, Device, FileInfo, DeviceType } from '../service/LocalSendService';
 import { SettingsService } from '../services/SettingsService';
@@ -36,8 +39,31 @@ export struct SendTab {
   @State selectedFiles: SelectedFile[] = [];
   @State isScanning: boolean = false;
   
-  @State showTextInputSheet: boolean = false;
   @State textToSend: string = '';
+
+  private textInputDialogController: CustomDialogController | null = new CustomDialogController({
+    builder: TextInputDialog({
+      textToSend: $textToSend,
+      onConfirm: () => {
+        if (this.textToSend.trim()) {
+          this.selectedFiles.push({
+            uri: 'text://' + this.textToSend.substring(0, 10),
+            name: 'Text Message.txt',
+            size: this.textToSend.length,
+            type: 'text'
+          });
+          this.selectedFilesCount = this.selectedFiles.length;
+        }
+        this.textToSend = '';
+      },
+      onCancel: () => {
+        this.textToSend = '';
+      }
+    }),
+    autoCancel: true,
+    customStyle: true,
+    alignment: DialogAlignment.Center
+  });
 
   // 根据设备模型和设备类型获取设备图标
   private getDeviceIcon(deviceModel: string, deviceType: string): Resource {
@@ -63,10 +89,10 @@ export struct SendTab {
     // 5. 手机设备 - 使用手机图标
     if (model.includes('iphone') || model.includes('phone') || model.includes('android') || 
         model.includes('harmony') || model.includes('harmonyos') || type === 'mobile') {
-      return $r('sys.symbol.phone_1');
+      return $r('sys.symbol.phone');
     }
     // 默认设备图标
-    return $r('sys.symbol.phone_1');
+    return $r('sys.symbol.phone');
   }
 
   // 根据设备模型获取设备类型名称
@@ -188,6 +214,7 @@ export struct SendTab {
     for (let i = 0; i < this.selectedFiles.length; i++) {
       const f = this.selectedFiles[i];
       if (f.uri.startsWith('text://')) {
+        // 文本：写入临时文件
         const textContent = f.uri.substring(7);
         const tempFileName = `text-${Date.now()}-${i}.txt`;
         const tempPath = `${context.cacheDir}/${tempFileName}`;
@@ -195,50 +222,52 @@ export struct SendTab {
           let file = fs.openSync(tempPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
           fs.writeSync(file.fd, textContent);
           fs.closeSync(file);
-          
-          let readVal = fs.openSync(tempPath, fs.OpenMode.READ_ONLY);
+
           preparedFiles.push({
             id: `file-${i}-${Date.now()}`,
             fileName: f.name || 'Text Message.txt',
-            size: textContent.length,
-            filePath: tempPath,
-            fd: readVal.fd
+            size: fs.statSync(tempPath).size,
+            filePath: tempPath   // C++ 可直接 fopen 的真实路径
           });
           tempPaths.push(tempPath);
         } catch (e) {
-          hilog.error(0x0000, 'SendTab', `Failed to write text to temp file: ${(e as Error).message}`);
+          hilog.error(0x0000, 'SendTab', `Failed to write text temp file: ${(e as Error).message}`);
           promptAction.showToast({ message: `准备文本文件失败: ${(e as Error).message}` });
-          // 清理已经打开的只读 FD
-          preparedFiles.forEach(fileInfo => {
-            if (fileInfo.fd !== undefined && fileInfo.fd >= 0) {
-              try { fs.closeSync(fileInfo.fd); } catch (e) {}
-            }
-          });
           this.cleanupTempFiles(tempPaths);
           return;
         }
       } else {
+        // 普通文件/媒体：复制到 cacheDir，得到 C++ 可访问的真实路径
+        const ext = (f.name || 'file').includes('.') ? (f.name || 'file').split('.').pop() : 'bin';
+        const tempFileName = `send-${Date.now()}-${i}.${ext}`;
+        const tempPath = `${context.cacheDir}/${tempFileName}`;
+        let srcFile: fs.File | null = null;
         try {
-          let srcFile = fs.openSync(f.uri, fs.OpenMode.READ_ONLY);
-          let stat = fs.statSync(srcFile.fd);
-          const actualSize = stat.size;
+          // 使用 fs.openSync 打开源文件 URI，系统会自动解析 datashare:// 和 file:// 格式的虚拟 URI 并返回 fd
+          srcFile = fs.openSync(f.uri, fs.OpenMode.READ_ONLY);
+          fs.copyFileSync(srcFile.fd, tempPath);
+          fs.closeSync(srcFile);
+          srcFile = null;
+
+          const stat = fs.statSync(tempPath);
 
           preparedFiles.push({
             id: `file-${i}-${Date.now()}`,
             fileName: f.name || 'unknown',
-            size: actualSize,
-            filePath: f.uri,
-            fd: srcFile.fd // 传递只读 FD，不复制文件
+            size: stat.size,
+            filePath: tempPath   // C++ 可直接 fopen 的真实路径
           });
+          tempPaths.push(tempPath);
         } catch (e) {
-          hilog.error(0x0000, 'SendTab', `Failed to open file: ${(e as Error).message}`);
-          promptAction.showToast({ message: `准备文件 ${f.name} 失败: ${(e as Error).message}` });
-          // 清理已经打开的只读 FD
-          preparedFiles.forEach(fileInfo => {
-            if (fileInfo.fd !== undefined && fileInfo.fd >= 0) {
-              try { fs.closeSync(fileInfo.fd); } catch (e) {}
+          if (srcFile) {
+            try {
+              fs.closeSync(srcFile);
+            } catch (closeErr) {
+              // 忽略关闭失败
             }
-          });
+          }
+          hilog.error(0x0000, 'SendTab', `Failed to copy file to cache: ${(e as Error).message}`);
+          promptAction.showToast({ message: `准备文件 ${f.name} 失败: ${(e as Error).message}` });
           this.cleanupTempFiles(tempPaths);
           return;
         }
@@ -253,7 +282,7 @@ export struct SendTab {
       deviceModel: device.deviceModel || 'Unknown',
       download: false,
       version: device.version || '2.0',
-      https: device.https || false,
+      https: device.https !== undefined ? device.https : true,
       deviceType: device.deviceType || DeviceType.Mobile
     };
 
@@ -277,12 +306,6 @@ export struct SendTab {
     const success = await fileTransferManager.startSendTask(task.id);
     if (!success) {
       promptAction.showToast({ message: t('failed', this.languageVersion) });
-      // 启动发送任务失败时，需主动关闭已打开的所有 FD
-      preparedFiles.forEach(fileInfo => {
-        if (fileInfo.fd !== undefined && fileInfo.fd >= 0) {
-          try { fs.closeSync(fileInfo.fd); } catch (e) {}
-        }
-      });
       this.cleanupTempFiles(tempPaths);
     } else {
       promptAction.showToast({ message: t('in_progress', this.languageVersion) });
@@ -294,6 +317,53 @@ export struct SendTab {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
     return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  }
+
+  private getMimeType(fileName: string): string {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    const mimeMap: Record<string, string> = {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+      'mp4': 'video/mp4',
+      'mp3': 'audio/mpeg',
+      'pdf': 'application/pdf',
+      'txt': 'text/plain',
+      'html': 'text/html',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'zip': 'application/zip',
+      'apk': 'application/vnd.android.package-archive'
+    };
+    return mimeMap[ext || ''] || '*/*';
+  }
+
+  private async previewFile(file: SelectedFile) {
+    if (!file.uri) {
+      promptAction.showToast({ message: '文件路径不存在' });
+      return;
+    }
+
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      const mimeType = this.getMimeType(file.name || '');
+
+      const want: Want = {
+        action: 'ohos.want.action.viewData',
+        uri: file.uri,
+        type: mimeType,
+        flags: wantConstant.Flags.FLAG_AUTH_READ_URI_PERMISSION
+      };
+
+      await context.startAbility(want);
+      console.info(`[SendTab] Successfully opened file for preview: ${file.uri}`);
+    } catch (err) {
+      promptAction.showToast({ message: '未找到支持打开该文件的应用' });
+      console.error('[SendTab] Failed to preview file:', err);
+    }
   }
 
   build() {
@@ -367,7 +437,11 @@ export struct SendTab {
             Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
               this.CategoryButton('file', $r('sys.symbol.doc'), (): void => { this.selectFiles(); })
               this.CategoryButton('media', $r('sys.symbol.camera'), (): void => { this.selectMedia(); })
-              this.CategoryButton('text', $r('sys.symbol.textformat'), (): void => { this.showTextInputSheet = true; })
+              this.CategoryButton('text', $r('sys.symbol.textformat'), (): void => {
+                if (this.textInputDialogController) {
+                  this.textInputDialogController.open();
+                }
+              })
             }
             .padding({ left: 0, right: 0 })
 
@@ -376,27 +450,64 @@ export struct SendTab {
               Column() {
                 ForEach(this.selectedFiles, (file: SelectedFile, index: number) => {
                   Row() {
-                    SymbolGlyph(file.type === 'media' ? $r('sys.symbol.camera') : (file.type === 'text' ? $r('sys.symbol.textformat') : $r('sys.symbol.doc')))
-                      .fontSize(24)
-                      .fontColor([gc('text_secondary', this.themeVersion)])
-                      .margin({ right: 12 })
-                    
-                    Column() {
-                      Text(file.name)
-                        .fontSize(16)
-                        .fontWeight(FontWeight.Medium)
-                        .fontColor(gc('text_primary', this.themeVersion))
-                        .maxLines(1)
-                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    // 主体点击可预览/定位
+                    Row() {
+                      SymbolGlyph(file.type === 'media' ? $r('sys.symbol.camera') : (file.type === 'text' ? $r('sys.symbol.textformat') : $r('sys.symbol.doc')))
+                        .fontSize(24)
+                        .fontColor([gc('text_secondary', this.themeVersion)])
+                        .margin({ right: 12 })
                       
-                      Text(this.formatSize(file.size))
-                        .fontSize(12)
-                        .fontColor(gc('text_tertiary', this.themeVersion))
+                      Column() {
+                        Text(file.name)
+                          .fontSize(16)
+                          .fontWeight(FontWeight.Medium)
+                          .fontColor(gc('text_primary', this.themeVersion))
+                          .maxLines(1)
+                          .textOverflow({ overflow: TextOverflow.Ellipsis })
+                        
+                        Row() {
+                          Text(this.formatSize(file.size))
+                            .fontSize(12)
+                            .fontColor(gc('text_tertiary', this.themeVersion))
+                          
+                          Text('  •  ')
+                            .fontSize(11)
+                            .fontColor(gc('text_tertiary', this.themeVersion))
+                          
+                          // 优雅展示文件的原始定位路径
+                          Text(file.uri)
+                            .fontSize(11)
+                            .fontColor(gc('text_tertiary', this.themeVersion))
+                            .layoutWeight(1)
+                            .maxLines(1)
+                            .textOverflow({ overflow: TextOverflow.Ellipsis })
+                        }
+                        .width('100%')
                         .margin({ top: 4 })
+                      }
+                      .layoutWeight(1)
+                      .alignItems(HorizontalAlign.Start)
                     }
                     .layoutWeight(1)
-                    .alignItems(HorizontalAlign.Start)
+                    .onClick(() => {
+                      this.previewFile(file);
+                    })
                     
+                    // 显式预览定位的动作入口
+                    Button({ type: ButtonType.Circle }) {
+                      SymbolGlyph($r('sys.symbol.eye'))
+                        .fontSize(18)
+                        .fontColor([gc('accent', this.themeVersion)])
+                    }
+                    .width(36)
+                    .height(36)
+                    .backgroundColor(gc('transparent', this.themeVersion))
+                    .margin({ right: 4 })
+                    .onClick(() => {
+                      this.previewFile(file);
+                    })
+
+                    // 移除该选项的按钮
                     Button({ type: ButtonType.Circle }) {
                       SymbolGlyph($r('sys.symbol.xmark'))
                         .fontSize(16)
@@ -613,12 +724,6 @@ export struct SendTab {
     .width('100%')
     .height('100%')
     .justifyContent(FlexAlign.Start)
-    .backgroundColor(gc('bg_primary', this.themeVersion))
-    .bindSheet(this.showTextInputSheet, this.TextInputSheet(), {
-      height: 300,
-      backgroundColor: gc('bg_secondary', this.themeVersion),
-      dragBar: true
-    })
     .key(`send_tab_scroll_${this.refreshKey}`)
   }
 
@@ -626,56 +731,6 @@ export struct SendTab {
     CategoryButtonComponent({ labelKey: labelKey, iconResource: iconResource, onButtonClick: onClick, themeVersion: this.themeVersion, languageVersion: this.languageVersion })
   }
 
-  @Builder TextInputSheet() {
-    Column() {
-      Text(t('send_text_title', this.languageVersion))
-        .fontSize(18)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(gc('text_primary', this.themeVersion))
-        .margin({ top: 16, bottom: 16 })
-      
-      TextArea({ text: this.textToSend, placeholder: t('input_text_placeholder', this.languageVersion) })
-        .width('90%')
-        .height(120)
-        .onChange((value: string) => {
-          this.textToSend = value;
-        })
-      
-      Row() {
-        Button(t('cancel', this.languageVersion))
-          .width('40%')
-          .backgroundColor(gc('bg_primary', this.themeVersion))
-          .fontColor(gc('text_primary', this.themeVersion))
-          .onClick(() => {
-            this.showTextInputSheet = false;
-            this.textToSend = '';
-          })
-        
-        Button(t('confirm', this.languageVersion))
-          .width('40%')
-          .backgroundColor(gc('accent', this.themeVersion))
-          .fontColor(Color.White)
-          .onClick(() => {
-            if (this.textToSend.trim()) {
-              this.selectedFiles.push({
-                uri: 'text://' + this.textToSend.substring(0, 10),
-                name: 'Text Message.txt',
-                size: this.textToSend.length,
-            type: 'text'
-              });
-              this.selectedFilesCount = this.selectedFiles.length;
-            }
-            this.showTextInputSheet = false;
-            this.textToSend = '';
-          })
-      }
-      .width('100%')
-      .justifyContent(FlexAlign.SpaceEvenly)
-      .margin({ top: 20 })
-    }
-    .width('100%')
-    .padding(16)
-  }
 }
 
 /**
@@ -750,5 +805,80 @@ struct CategoryButtonComponent {
       }
     })
     .onClick(this.onButtonClick)
+  }
+}
+
+/**
+ * 文本输入弹窗组件，居中展示且默认自动避让键盘
+ */
+@CustomDialog
+struct TextInputDialog {
+  controller: CustomDialogController;
+  @Link textToSend: string;
+  onConfirm: () => void = () => {};
+  onCancel: () => void = () => {};
+  
+  @StorageProp('themeVersion') themeVersion: number = 0;
+  @StorageProp('languageVersion') languageVersion: number = 0;
+
+  build() {
+    Column() {
+      // 标题
+      Text(t('send_text_title', this.languageVersion))
+        .fontSize(18)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(gc('text_primary', this.themeVersion))
+        .margin({ top: 8, bottom: 16 })
+      
+      // 输入域
+      TextArea({ text: this.textToSend, placeholder: t('input_text_placeholder', this.languageVersion) })
+        .width('100%')
+        .height(130)
+        .fontSize(15)
+        .fontColor(gc('text_primary', this.themeVersion))
+        .backgroundColor(gc('bg_primary', this.themeVersion))
+        .placeholderColor(gc('text_tertiary', this.themeVersion))
+        .borderRadius(10)
+        .onChange((value: string) => {
+          this.textToSend = value;
+        })
+        .margin({ bottom: 20 })
+      
+      // 按钮操作区
+      Row() {
+        Button(t('cancel', this.languageVersion))
+          .layoutWeight(1)
+          .fontSize(14)
+          .fontColor(gc('text_secondary', this.themeVersion))
+          .backgroundColor(Color.Transparent)
+          .border({ width: 1, color: gc('divider', this.themeVersion) })
+          .borderRadius(12)
+          .height(42)
+          .onClick(() => {
+            this.onCancel();
+            this.controller.close();
+          })
+        
+        Blank().width(16)
+        
+        Button(t('confirm', this.languageVersion))
+          .layoutWeight(1)
+          .fontSize(14)
+          .fontColor(Color.White)
+          .backgroundColor(gc('accent', this.themeVersion))
+          .borderRadius(12)
+          .height(42)
+          .onClick(() => {
+            this.onConfirm();
+            this.controller.close();
+          })
+      }
+      .width('100%')
+      .margin({ bottom: 8 })
+    }
+    .width('90%')
+    .padding(20)
+    .backgroundColor(gc('bg_secondary', this.themeVersion))
+    .borderRadius(16)
   }
 }
