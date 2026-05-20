@@ -68,12 +68,58 @@ export struct SettingsTab {
   }
   
   // 弹窗状态
-  @State showAliasDialog: boolean = false;
-  @State showPortDialog: boolean = false;
-  @State showPinCodeDialog: boolean = false;
   @State tempAliasName: string = '';
   @State tempPort: string = '';
   @State tempPinCode: string = '';
+
+  private aliasDialogController: CustomDialogController | null = new CustomDialogController({
+    builder: AliasInputDialogComponent({
+      tempAliasName: $tempAliasName,
+      onConfirm: () => {
+        if (this.tempAliasName.trim()) {
+          this.aliasName = this.tempAliasName.trim();
+          this.settingsService.setAliasName(this.aliasName);
+          promptAction.showToast({ message: t('change_alias', this.languageVersion) + ': ' + this.aliasName });
+        }
+      }
+    }),
+    autoCancel: true,
+    customStyle: true,
+    alignment: DialogAlignment.Center
+  });
+
+  private portDialogController: CustomDialogController | null = new CustomDialogController({
+    builder: PortInputDialogComponent({
+      tempPort: $tempPort,
+      onConfirm: () => {
+        const newPort = parseInt(this.tempPort);
+        if (newPort >= 1024 && newPort <= 65535) {
+          this.port = newPort;
+          this.settingsService.setPort(this.port);
+          promptAction.showToast({ message: t('change_port', this.languageVersion) + ': ' + this.port });
+        } else {
+          promptAction.showToast({ message: 'Error' });
+        }
+      }
+    }),
+    autoCancel: true,
+    customStyle: true,
+    alignment: DialogAlignment.Center
+  });
+
+  private pinCodeDialogController: CustomDialogController | null = new CustomDialogController({
+    builder: PinCodeInputDialogComponent({
+      tempPinCode: $tempPinCode,
+      onConfirm: () => {
+        this.pinCode = this.tempPinCode.trim();
+        this.settingsService.setPinCode(this.pinCode);
+        promptAction.showToast({ message: t('change_pin_code', this.languageVersion) + ': ' + (this.pinCode ? this.pinCode : t('pin_code_disabled', this.languageVersion)) });
+      }
+    }),
+    autoCancel: true,
+    customStyle: true,
+    alignment: DialogAlignment.Center
+  });
   
   // 色彩弹窗控制器
   private colorThemeDialogController: CustomDialogController = new CustomDialogController({
@@ -260,21 +306,21 @@ export struct SettingsTab {
                 value: this.aliasName,
                 themeVersion: this.themeVersion,
                 languageVersion: this.languageVersion,
-                onItemClick: (): void => { this.showAliasDialog = true; }
+                onItemClick: (): void => { this.showAliasInputDialog(); }
               })
               SettingsRowComponent({
                 label: t('device_port', this.languageVersion),
                 value: this.port.toString(),
                 themeVersion: this.themeVersion,
                 languageVersion: this.languageVersion,
-                onItemClick: (): void => { this.showPortDialog = true; }
+                onItemClick: (): void => { this.showPortInputDialog(); }
               })
               SettingsRowComponent({
                 label: t('pin_code', this.languageVersion),
                 value: this.pinCode || t('pin_code_disabled', this.languageVersion),
                 themeVersion: this.themeVersion,
                 languageVersion: this.languageVersion,
-                onItemClick: (): void => { this.showPinCodeDialog = true; }
+                onItemClick: (): void => { this.showPinCodeInputDialog(); }
               })
             }
             .width('100%')
@@ -376,166 +422,9 @@ export struct SettingsTab {
     .width('100%')
     .height('100%')
     .backgroundColor(gc('bg_primary', this.themeVersion))
-    .bindSheet(this.showAliasDialog, this.AliasInputDialog(), {
-      height: 200,
-      backgroundColor: gc('bg_secondary', this.themeVersion),
-      dragBar: true
-    })
-    .bindSheet(this.showPortDialog, this.PortInputDialog(), {
-      height: 200,
-      backgroundColor: gc('bg_secondary', this.themeVersion),
-      dragBar: true
-    })
-    .bindSheet(this.showPinCodeDialog, this.PinCodeInputDialog(), {
-      height: 200,
-      backgroundColor: gc('bg_secondary', this.themeVersion),
-      dragBar: true
-    })
   }
 
-  // 别名输入弹窗
-  @Builder AliasInputDialog() {
-    Column() {
-      Text(t('change_alias', this.languageVersion))
-        .fontSize(18)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(gc('text_primary', this.themeVersion))
-        .margin({ top: 16, bottom: 16 })
-      
-      TextInput({ text: this.tempAliasName, placeholder: t('input_alias', this.languageVersion) })
-        .width('90%')
-        .height(48)
-        .onChange((value: string): void => {
-          this.tempAliasName = value;
-        })
-      
-      Row() {
-        Button(t('cancel', this.languageVersion))
-          .width('40%')
-          .backgroundColor(gc('bg_primary', this.themeVersion))
-          .fontColor(gc('text_primary', this.themeVersion))
-          .onClick((): void => {
-            this.showAliasDialog = false;
-          })
-        
-        Button(t('confirm', this.languageVersion))
-          .width('40%')
-          .onClick((): void => {
-            if (this.tempAliasName.trim()) {
-              this.aliasName = this.tempAliasName.trim();
-              this.settingsService.setAliasName(this.aliasName);
-              promptAction.showToast({ message: t('change_alias', this.languageVersion) + ': ' + this.aliasName });
-            }
-            this.showAliasDialog = false;
-          })
-      }
-      .width('100%')
-      .justifyContent(FlexAlign.SpaceEvenly)
-      .margin({ top: 20 })
-    }
-    .width('100%')
-    .padding(16)
-  }
 
-  // 端口输入弹窗
-  @Builder PortInputDialog() {
-    Column() {
-      Text(t('change_port', this.languageVersion))
-        .fontSize(18)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(gc('text_primary', this.themeVersion))
-        .margin({ top: 16, bottom: 16 })
-      
-      TextInput({ text: this.tempPort, placeholder: t('input_port', this.languageVersion) })
-        .width('90%')
-        .height(48)
-        .type(InputType.Number)
-        .onChange((value: string): void => {
-          this.tempPort = value;
-        })
-      
-      Row() {
-        Button(t('cancel', this.languageVersion))
-          .width('40%')
-          .backgroundColor(gc('bg_primary', this.themeVersion))
-          .fontColor(gc('text_primary', this.themeVersion))
-          .onClick((): void => {
-            this.showPortDialog = false;
-          })
-        
-        Button(t('confirm', this.languageVersion))
-          .width('40%')
-          .onClick((): void => {
-            const newPort = parseInt(this.tempPort);
-            if (newPort >= 1024 && newPort <= 65535) {
-              this.port = newPort;
-              this.settingsService.setPort(this.port);
-              promptAction.showToast({ message: t('change_port', this.languageVersion) + ': ' + this.port });
-            } else {
-              promptAction.showToast({ message: 'Error' });
-            }
-            this.showPortDialog = false;
-          })
-      }
-      .width('100%')
-      .justifyContent(FlexAlign.SpaceEvenly)
-      .margin({ top: 20 })
-    }
-    .width('100%')
-    .padding(16)
-  }
-
-  // PIN 码输入弹窗
-  @Builder PinCodeInputDialog() {
-    Column() {
-      Text(t('change_pin_code', this.languageVersion))
-        .fontSize(18)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(gc('text_primary', this.themeVersion))
-        .margin({ top: 16, bottom: 16 })
-      
-      TextInput({ text: this.tempPinCode, placeholder: t('input_pin_code', this.languageVersion) })
-        .width('90%')
-        .height(48)
-        .onChange((value: string): void => {
-          this.tempPinCode = value;
-        })
-      
-      Button(t('random_generate', this.languageVersion))
-        .fontSize(14)
-        .fontColor(gc('accent', this.themeVersion))
-        .backgroundColor(Color.Transparent)
-        .margin({ top: 12 })
-        .onClick((): void => {
-          const randomPin = Math.floor(1000 + Math.random() * 9000).toString();
-          this.tempPinCode = randomPin;
-        })
-      
-      Row() {
-        Button(t('cancel', this.languageVersion))
-          .width('40%')
-          .backgroundColor(gc('bg_primary', this.themeVersion))
-          .fontColor(gc('text_primary', this.themeVersion))
-          .onClick((): void => {
-            this.showPinCodeDialog = false;
-          })
-        
-        Button(t('confirm', this.languageVersion))
-          .width('40%')
-          .onClick((): void => {
-            this.pinCode = this.tempPinCode.trim();
-            this.settingsService.setPinCode(this.pinCode);
-            promptAction.showToast({ message: t('change_pin_code', this.languageVersion) + ': ' + (this.pinCode ? this.pinCode : t('pin_code_disabled', this.languageVersion)) });
-            this.showPinCodeDialog = false;
-          })
-      }
-      .width('100%')
-      .justifyContent(FlexAlign.SpaceEvenly)
-      .margin({ top: 20 })
-    }
-    .width('100%')
-    .padding(16)
-  }
 
   // 切换动画
   private toggleAnimation(): void {
@@ -548,19 +437,25 @@ export struct SettingsTab {
   // 显示别名输入弹窗
   private showAliasInputDialog() {
     this.tempAliasName = this.aliasName;
-    this.showAliasDialog = true;
+    if (this.aliasDialogController) {
+      this.aliasDialogController.open();
+    }
   }
 
   // 显示端口输入弹窗
   private showPortInputDialog() {
     this.tempPort = this.port.toString();
-    this.showPortDialog = true;
+    if (this.portDialogController) {
+      this.portDialogController.open();
+    }
   }
 
   // 显示 PIN 码输入弹窗
   private showPinCodeInputDialog() {
     this.tempPinCode = this.pinCode;
-    this.showPinCodeDialog = true;
+    if (this.pinCodeDialogController) {
+      this.pinCodeDialogController.open();
+    }
   }
 
 
@@ -623,5 +518,231 @@ struct SettingsRowComponent {
         this.onItemClick();
       }
     })
+  }
+}
+
+/**
+ * 别名输入弹窗组件
+ */
+@CustomDialog
+struct AliasInputDialogComponent {
+  controller: CustomDialogController;
+  @Link tempAliasName: string;
+  onConfirm: () => void = () => {};
+  onCancel: () => void = () => {};
+
+  @StorageProp('themeVersion') themeVersion: number = 0;
+  @StorageProp('languageVersion') languageVersion: number = 0;
+
+  build() {
+    Column() {
+      Text(t('change_alias', this.languageVersion))
+        .fontSize(18)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(gc('text_primary', this.themeVersion))
+        .margin({ top: 8, bottom: 16 })
+      
+      TextInput({ text: this.tempAliasName, placeholder: t('input_alias', this.languageVersion) })
+        .width('100%')
+        .height(48)
+        .fontSize(15)
+        .fontColor(gc('text_primary', this.themeVersion))
+        .backgroundColor(gc('bg_primary', this.themeVersion))
+        .placeholderColor(gc('text_tertiary', this.themeVersion))
+        .borderRadius(10)
+        .onChange((value: string): void => {
+          this.tempAliasName = value;
+        })
+        .margin({ bottom: 20 })
+      
+      Row() {
+        Button(t('cancel', this.languageVersion))
+          .layoutWeight(1)
+          .fontSize(14)
+          .fontColor(gc('text_secondary', this.themeVersion))
+          .backgroundColor(Color.Transparent)
+          .border({ width: 1, color: gc('divider', this.themeVersion) })
+          .borderRadius(12)
+          .height(42)
+          .onClick((): void => {
+            this.onCancel();
+            this.controller.close();
+          })
+        
+        Blank().width(16)
+        
+        Button(t('confirm', this.languageVersion))
+          .layoutWeight(1)
+          .fontSize(14)
+          .fontColor(Color.White)
+          .backgroundColor(gc('accent', this.themeVersion))
+          .borderRadius(12)
+          .height(42)
+          .onClick((): void => {
+            this.onConfirm();
+            this.controller.close();
+          })
+      }
+      .width('100%')
+      .margin({ bottom: 8 })
+    }
+    .width('90%')
+    .padding(20)
+    .backgroundColor(gc('bg_secondary', this.themeVersion))
+    .borderRadius(16)
+  }
+}
+
+/**
+ * 端口输入弹窗组件
+ */
+@CustomDialog
+struct PortInputDialogComponent {
+  controller: CustomDialogController;
+  @Link tempPort: string;
+  onConfirm: () => void = () => {};
+  onCancel: () => void = () => {};
+
+  @StorageProp('themeVersion') themeVersion: number = 0;
+  @StorageProp('languageVersion') languageVersion: number = 0;
+
+  build() {
+    Column() {
+      Text(t('change_port', this.languageVersion))
+        .fontSize(18)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(gc('text_primary', this.themeVersion))
+        .margin({ top: 8, bottom: 16 })
+      
+      TextInput({ text: this.tempPort, placeholder: t('input_port', this.languageVersion) })
+        .width('100%')
+        .height(48)
+        .type(InputType.Number)
+        .fontSize(15)
+        .fontColor(gc('text_primary', this.themeVersion))
+        .backgroundColor(gc('bg_primary', this.themeVersion))
+        .placeholderColor(gc('text_tertiary', this.themeVersion))
+        .borderRadius(10)
+        .onChange((value: string): void => {
+          this.tempPort = value;
+        })
+        .margin({ bottom: 20 })
+      
+      Row() {
+        Button(t('cancel', this.languageVersion))
+          .layoutWeight(1)
+          .fontSize(14)
+          .fontColor(gc('text_secondary', this.themeVersion))
+          .backgroundColor(Color.Transparent)
+          .border({ width: 1, color: gc('divider', this.themeVersion) })
+          .borderRadius(12)
+          .height(42)
+          .onClick((): void => {
+            this.onCancel();
+            this.controller.close();
+          })
+        
+        Blank().width(16)
+        
+        Button(t('confirm', this.languageVersion))
+          .layoutWeight(1)
+          .fontSize(14)
+          .fontColor(Color.White)
+          .backgroundColor(gc('accent', this.themeVersion))
+          .borderRadius(12)
+          .height(42)
+          .onClick((): void => {
+            this.onConfirm();
+            this.controller.close();
+          })
+      }
+      .width('100%')
+      .margin({ bottom: 8 })
+    }
+    .width('90%')
+    .padding(20)
+    .backgroundColor(gc('bg_secondary', this.themeVersion))
+    .borderRadius(16)
+  }
+}
+
+/**
+ * PIN 码输入弹窗组件
+ */
+@CustomDialog
+struct PinCodeInputDialogComponent {
+  controller: CustomDialogController;
+  @Link tempPinCode: string;
+  onConfirm: () => void = () => {};
+  onCancel: () => void = () => {};
+
+  @StorageProp('themeVersion') themeVersion: number = 0;
+  @StorageProp('languageVersion') languageVersion: number = 0;
+
+  build() {
+    Column() {
+      Text(t('change_pin_code', this.languageVersion))
+        .fontSize(18)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(gc('text_primary', this.themeVersion))
+        .margin({ top: 8, bottom: 12 })
+      
+      TextInput({ text: this.tempPinCode, placeholder: t('input_pin_code', this.languageVersion) })
+        .width('100%')
+        .height(48)
+        .fontSize(15)
+        .fontColor(gc('text_primary', this.themeVersion))
+        .backgroundColor(gc('bg_primary', this.themeVersion))
+        .placeholderColor(gc('text_tertiary', this.themeVersion))
+        .borderRadius(10)
+        .onChange((value: string): void => {
+          this.tempPinCode = value;
+        })
+      
+      Button(t('random_generate', this.languageVersion))
+        .fontSize(14)
+        .fontColor(gc('accent', this.themeVersion))
+        .backgroundColor(Color.Transparent)
+        .margin({ top: 8, bottom: 16 })
+        .onClick((): void => {
+          const randomPin = Math.floor(1000 + Math.random() * 9000).toString();
+          this.tempPinCode = randomPin;
+        })
+      
+      Row() {
+        Button(t('cancel', this.languageVersion))
+          .layoutWeight(1)
+          .fontSize(14)
+          .fontColor(gc('text_secondary', this.themeVersion))
+          .backgroundColor(Color.Transparent)
+          .border({ width: 1, color: gc('divider', this.themeVersion) })
+          .borderRadius(12)
+          .height(42)
+          .onClick((): void => {
+            this.onCancel();
+            this.controller.close();
+          })
+        
+        Blank().width(16)
+        
+        Button(t('confirm', this.languageVersion))
+          .layoutWeight(1)
+          .fontSize(14)
+          .fontColor(Color.White)
+          .backgroundColor(gc('accent', this.themeVersion))
+          .borderRadius(12)
+          .height(42)
+          .onClick((): void => {
+            this.onConfirm();
+            this.controller.close();
+          })
+      }
+      .width('100%')
+      .margin({ bottom: 8 })
+    }
+    .width('90%')
+    .padding(20)
+    .backgroundColor(gc('bg_secondary', this.themeVersion))
+    .borderRadius(16)
   }
 }

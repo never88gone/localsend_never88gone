@@ -103,9 +103,10 @@ struct ContactCommunity {
             .borderRadius(16)
             .shadow({ radius: 4, color: '#05000000', offsetY: 2 })
             .clip(true)
-            .margin({ left: 20, right: 20, top: 8, bottom: 40 })
+            .margin({ top: 8, bottom: 40 })
           }
           .width('100%')
+          .padding({ left: 20, right: 20 })
           .justifyContent(FlexAlign.Start)
           .alignItems(HorizontalAlign.Start)
         }
