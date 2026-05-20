@@ -1,7 +1,7 @@
 # THLAirDrop (LocalSend HarmonyOS 原生客户端)
 
 <p align="center">
-  <img src="https://localsend.org/img/logo-512.png" alt="LocalSend Logo" width="120" height="120" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);"/>
+  <img src="./iTunesShot/1024*1024.png" alt="LocalSend Logo" width="120" height="120" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);"/>
 </p>
 
 ## 🌟 项目简介
@@ -18,7 +18,7 @@
 当您首次打开应用时，会弹窗进行网络与存储权限的使用说明。请您点击**同意/确定**以开启网络扫描和文件读写权限，保障应用的正常直连投送。
 
 <p align="center">
-  <img src="./image/首次提醒.png" alt="首次提醒" width="280" style="border-radius: 12px; border: 1px solid #eaeaea; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"/>
+  <img src="./iTunesShot/首次提醒.png" alt="首次提醒" width="280" style="border-radius: 12px; border: 1px solid #eaeaea; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"/>
 </p>
 
 ### 2. 接收文件与状态概览
@@ -28,7 +28,7 @@
 - **传输历史**：点击底部的 "查看历史接收数据" 按钮，可直接进入历史传输列表，管理和快速定位已接收的本地文件。
 
 <p align="center">
-  <img src="./image/接受页面.png" alt="接收页面" width="280" style="border-radius: 12px; border: 1px solid #eaeaea; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"/>
+  <img src="./iTunesShot/接受页面.png" alt="接收页面" width="280" style="border-radius: 12px; border: 1px solid #eaeaea; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"/>
 </p>
 
 ### 3. 选择资源与发现发送
@@ -38,7 +38,7 @@
 - **手动扫描**：如遇复杂局域网，可点击右上角图标，手动输入对方的 IP 地址进行强行扫描直连。
 
 <p align="center">
-  <img src="./image/发送页面.png" alt="发送页面" width="280" style="border-radius: 12px; border: 1px solid #eaeaea; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"/>
+  <img src="./iTunesShot/发送页面.png" alt="发送页面" width="280" style="border-radius: 12px; border: 1px solid #eaeaea; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"/>
 </p>
 
 ### 4. 传输历史与管理
@@ -57,7 +57,7 @@
 - **偏好设定**：自由选择“常规”（主题色、明暗主题）、“语言一键切换”以及查看“关于与隐私声明”等。
 
 <p align="center">
-  <img src="./image/设置页面.png" alt="设置页面" width="280" style="border-radius: 12px; border: 1px solid #eaeaea; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"/>
+  <img src="./iTunesShot/设置页面.png" alt="设置页面" width="280" style="border-radius: 12px; border: 1px solid #eaeaea; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"/>
 </p>
 
 ---
