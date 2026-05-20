@@ -106,6 +106,8 @@ interface StringMap {
   file_count: string;
   view_history: string;
   current_receiving: string;
+  device_settings: string;
+  privacy_security: string;
 }
 
 interface LanguageStrings {
@@ -219,7 +221,9 @@ export class I18nManager {
       accept_failed: '接受请求失败',
       file_count: '个文件',
       view_history: '查看历史接收数据',
-      current_receiving: '当前正在接收'
+      current_receiving: '当前正在接收',
+      device_settings: '设备设置',
+      privacy_security: '隐私与安全'
     },
     en: {
       tab_receive: 'Receive',
@@ -325,7 +329,9 @@ export class I18nManager {
       accept_failed: 'Accept failed',
       file_count: 'files',
       view_history: 'View Receive History',
-      current_receiving: 'Currently Receiving'
+      current_receiving: 'Currently Receiving',
+      device_settings: 'Device Settings',
+      privacy_security: 'Privacy & Security'
     }
   };
 
