@@ -13,3 +13,9 @@
 .agent
 agconnect-services.json
 airdrop_devDebug.p7b
+
+# 证书和签名文件（敏感，绝不提交）
+*.p7b
+*.p12
+*.csr
+*.cer
