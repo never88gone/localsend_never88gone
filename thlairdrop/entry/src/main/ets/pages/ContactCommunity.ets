@@ -63,24 +63,6 @@ struct ContactCommunity {
             // 联系信息卡片
             Column() {
               ContactRow({
-                label: t('contact_github', this.languageVersion),
-                value: 'localsend_never88gone',
-                themeVersion: this.themeVersion,
-                onItemClick: (): void => { this.openUrl('https://github.com/never88gone/localsend_never88gone'); }
-              })
-              
-              Divider().color(gc('divider', this.themeVersion)).strokeWidth(1)
-              
-              ContactRow({
-                label: t('contact_telegram', this.languageVersion),
-                value: '@tanghulutvos',
-                themeVersion: this.themeVersion,
-                onItemClick: (): void => { this.openUrl('https://t.me/tanghulutvos'); }
-              })
-              
-              Divider().color(gc('divider', this.themeVersion)).strokeWidth(1)
-              
-              ContactRow({
                 label: t('contact_email', this.languageVersion),
                 value: 'hsb@myit2017.cn',
                 themeVersion: this.themeVersion,
@@ -93,7 +75,7 @@ struct ContactCommunity {
               
               ContactRow({
                 label: t('contact_website', this.languageVersion),
-                value: 'myit2017.cn',
+                value: 'www.myit2017.cn',
                 themeVersion: this.themeVersion,
                 onItemClick: (): void => { this.openUrl('https://www.myit2017.cn'); }
               })

@@ -511,7 +511,7 @@ class SettingsTab extends StatelessWidget {
                         buttonLabel: t.general.open,
                         onTap: () async {
                           await launchUrl(
-                            Uri.parse('https://localsend.org/privacy'),
+                            Uri.parse('https://www.myit2017.cn/privacy/thl-send'),
                             mode: LaunchMode.externalApplication,
                           );
                         },

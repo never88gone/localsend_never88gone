@@ -174,38 +174,6 @@ export struct ReceiveTab {
 
   build() {
     Stack({ alignContent: Alignment.TopEnd }) {
-      // 右上角按钮
-      Row() {
-        // 历史记录按钮
-        Button({ type: ButtonType.Circle }) {
-          SymbolGlyph($r('sys.symbol.clock'))
-            .fontSize(24)
-            .fontColor([gc('text_secondary', this.themeVersion)])
-        }
-        .width(56)
-        .height(56)
-        .backgroundColor(gc('transparent', this.themeVersion))
-        .onClick(() => {
-          // 跳转到历史记录页面
-          router.pushUrl({ url: 'pages/TransferHistory' });
-        })
-
-        // 信息按钮
-        Button({ type: ButtonType.Circle }) {
-          SymbolGlyph($r('sys.symbol.info_circle'))
-            .fontSize(24)
-            .fontColor([gc('text_secondary', this.themeVersion)])
-        }
-        .width(56)
-        .height(56)
-        .backgroundColor(gc('transparent', this.themeVersion))
-        .onClick(() => {
-          this.showAdvancedInfo = !this.showAdvancedInfo;
-        })
-      }
-      .margin({ top: 20, right: 16 })
-      .zIndex(1)
-
       Scroll() {
         Column() {
           // Logo & 雷达部分
@@ -215,12 +183,13 @@ export struct ReceiveTab {
               if (this.isServerRunning) {
                 ForEach([0, 1, 2], (i: number) => {
                   Circle()
-                    .width(140 + ((this.animationAngle + i * 120) % 360) / 360 * 200)
-                    .height(140 + ((this.animationAngle + i * 120) % 360) / 360 * 200)
+                    .width(140 + ((this.animationAngle + i * 120) % 360) / 360 * 140)
+                    .height(140 + ((this.animationAngle + i * 120) % 360) / 360 * 140)
                     .fill(Color.Transparent)
                     .stroke(gc('accent', this.themeVersion))
                     .strokeWidth(2)
                     .opacity(Math.max(0, 1 - ((this.animationAngle + i * 120) % 360) / 360))
+                    .hitTestBehavior(HitTestMode.None)
                 })
               }
 
@@ -230,10 +199,11 @@ export struct ReceiveTab {
                 .borderRadius(28)
                 .shadow({ radius: 20, color: '#40000000', offsetY: 10 })
             }
-            .width(340)
-            .height(340)
+            .width(280)
+            .height(280)
             .alignContent(Alignment.Center)
-            .margin({ top: 40, bottom: 20 })
+            .margin({ top: 60, bottom: 20 })
+            .hitTestBehavior(HitTestMode.None)
             
             Text(this.aliasName)
               .fontSize(28)
@@ -470,6 +440,38 @@ export struct ReceiveTab {
       .backgroundColor(gc('bg_primary', this.themeVersion))
       .align(Alignment.Top)
       .key(`receive_tab_scroll_${this.themeRefreshKey}`)
+
+      // 右上角按钮 (置于 Scroll 之后以确立最高的层叠顺序)
+      Row() {
+        // 历史记录按钮
+        Button({ type: ButtonType.Circle }) {
+          SymbolGlyph($r('sys.symbol.clock'))
+            .fontSize(24)
+            .fontColor([gc('text_secondary', this.themeVersion)])
+        }
+        .width(56)
+        .height(56)
+        .backgroundColor(gc('transparent', this.themeVersion))
+        .onClick(() => {
+          // 跳转到历史记录页面
+          router.pushUrl({ url: 'pages/TransferHistory' });
+        })
+
+        // 信息按钮
+        Button({ type: ButtonType.Circle }) {
+          SymbolGlyph($r('sys.symbol.info_circle'))
+            .fontSize(24)
+            .fontColor([gc('text_secondary', this.themeVersion)])
+        }
+        .width(56)
+        .height(56)
+        .backgroundColor(gc('transparent', this.themeVersion))
+        .onClick(() => {
+          this.showAdvancedInfo = !this.showAdvancedInfo;
+        })
+      }
+      .margin({ top: 20, right: 16 })
+      .zIndex(10)
     }
     .width('100%')
     .height('100%')

@@ -2,6 +2,8 @@ import { gc, ThemeManager } from '../utils/ThemeManager';
 import router from '@ohos.router';
 import { PageHeader } from '../components/PageHeader';
 import { t } from '../utils/I18nManager';
+import common from '@ohos.app.ability.common';
+import hilog from '@ohos.hilog';
 
 @Entry
 @Component
@@ -37,6 +39,29 @@ struct PrivacyPolicy {
           Column() {
             // 内容区
             Column() {
+              Row() {
+                SymbolGlyph($r('sys.symbol.info_circle'))
+                  .fontSize(16)
+                  .fontColor([gc('accent', this.themeVersion)])
+                  .margin({ right: 8 })
+                Text('查看在线最新隐私政策')
+                  .fontSize(14)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(gc('accent', this.themeVersion))
+              }
+              .width('100%')
+              .padding(14)
+              .margin({ bottom: 12 })
+              .backgroundColor(gc('bg_secondary', this.themeVersion))
+              .borderRadius(12)
+              .justifyContent(FlexAlign.Center)
+              .onClick(() => {
+                const context = getContext(this) as common.UIAbilityContext;
+                context?.openLink('https://www.myit2017.cn/privacy/thl-send').catch((err: Error) => {
+                  hilog.error(0x0000, 'PrivacyPolicy', 'Failed to open link: ' + err.message);
+                });
+              })
+
               Column() {
                 Text(t('privacy_policy_content', this.languageVersion))
                   .fontSize(15)

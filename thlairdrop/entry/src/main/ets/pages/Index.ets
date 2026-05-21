@@ -372,17 +372,34 @@ struct PrivacyDialog {
       
       Scroll() {
         Column() {
-          Text('欢迎使用糖葫芦快传！\n\n' +
+          Text('欢迎使用糖葫芦投送！\n\n' +
                '本应用是一款【纯单机免服务器】的局域网点对点（P2P）文件与文本传输工具。为了保障您的知情权，在此向您说明：\n\n' +
                '1. 纯单机运行，无云端收集：本应用不设任何云端服务器，您的所有文件、文本内容和传输记录，均仅在您本地的局域网内设备之间进行直连点对点传递。我们不会、也无法收集或上传您的任何个人隐私数据。\n\n' +
                '2. 核心权限使用说明：\n' +
                '• 局域网设备扫描与连接：为寻找并直连同一网络下的其他设备，应用会申请WLAN与网络连接状态权限。\n' +
                '• 文件读取与写入：为允许您选择发送的文件，以及将接收到的文件保存到本地，应用会申请读取和写入媒体文件的权限。所有文件操作均在您的本地设备上执行。\n\n' +
                '3. 纯净无广告：本应用不包含任何广告插件与第三方追踪组件，请您放心使用。\n\n' +
-               '点击“我知道了并继续”代表您已了解并同意上述说明，本应用将正常为您开启局域网通信与文件读写传输服务。若不同意，应用将无法完成局域网点对点快传。')
+               '点击“我知道了并继续”代表您已了解并同意上述说明，本应用将正常为您开启局域网通信与文件读写传输服务。若不同意，应用将无法完成局域网点对点文件投送。')
             .fontSize(14)
             .lineHeight(22)
             .fontColor(gc('text_secondary', this.themeVersion))
+
+          Row() {
+            Text('点击查看')
+              .fontSize(13)
+              .fontColor(gc('text_secondary', this.themeVersion))
+            Text('《详细隐私政策》')
+              .fontSize(13)
+              .fontColor(gc('accent', this.themeVersion))
+              .decoration({ type: TextDecorationType.Underline, color: gc('accent', this.themeVersion) })
+              .onClick(() => {
+                const context = getContext(this) as common.UIAbilityContext;
+                context?.openLink('https://www.myit2017.cn/privacy/thl-send').catch((err: Error) => {
+                  hilog.error(0x0000, 'PrivacyDialog', 'Failed to open link: ' + err.message);
+                });
+              })
+          }
+          .margin({ top: 12 })
         }
         .alignItems(HorizontalAlign.Start)
       }

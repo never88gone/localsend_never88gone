@@ -390,7 +390,7 @@ export struct SettingsTab {
 
           // 版本信息
           Column() {
-            Image($r('app.media.app_icon'))
+            Image($r('app.media.foreground'))
               .width(80).height(80)
               .borderRadius(16)
               .margin({ top: 20, bottom: 12 })

@@ -33,8 +33,8 @@ export class ThemeManager {
         bg_primary: palette[9],
         bg_secondary: palette[8],
         text_primary: '#FFFFFF',
-        text_secondary: palette[1],
-        text_tertiary: palette[3],
+        text_secondary: '#E2E8F0', // 高对比度 Slate 200 辅助字
+        text_tertiary: '#94A3B8',  // 高对比度 Slate 400 失效/说明字
         accent: palette[4],
         accent_bg: palette[8],
         divider: palette[8],
@@ -52,9 +52,9 @@ export class ThemeManager {
         bg_primary: palette[1],
         bg_secondary: '#FFFFFF',
         text_primary: palette[9],
-        text_secondary: palette[7],
-        text_tertiary: palette[3],
-        accent: palette[5],
+        text_secondary: '#334155', // 高对比度 Slate 700 辅助字
+        text_tertiary: '#64748B',  // 高对比度 Slate 500 失效/说明字
+        accent: palette[6],        // 提升至 600 色阶提高高亮文本对比度
         accent_bg: palette[1],
         divider: palette[1],
         success: '#10B981',
