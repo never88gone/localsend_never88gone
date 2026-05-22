@@ -653,6 +653,13 @@ export struct SendTab {
                 .layoutWeight(1)
                 .alignItems(HorizontalAlign.Start)
                 
+                FavoriteButton({
+                  fingerprint: device.fingerprint || '',
+                  themeVersion: this.themeVersion,
+                  languageVersion: this.languageVersion
+                })
+                .margin({ right: this.selectedFilesCount > 0 ? 8 : 0 })
+                
                 if (this.selectedFilesCount > 0) {
                   Button() {
                     Text(t('tab_send', this.languageVersion))

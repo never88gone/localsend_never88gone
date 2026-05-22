@@ -355,7 +355,7 @@ export class FileTransferManager {
     this.updateTaskState(task, TransferState.InProgress);
     
     let session: rcp.Session | null = null;
-    let totalSentAll = 0;
+    let completedFilesSize = 0;
     try {
       // 1. 创建安全配置，跳过自签名证书校验，用于初始化握手阶段
       const config: rcp.SessionConfiguration = {
@@ -552,13 +552,11 @@ export class FileTransferManager {
                     if (task.state === TransferState.Cancelled || task.state === TransferState.Failed) {
                       throw new Error('Cancelled by user');
                     }
-                    const delta = transferred - fileSentSize;
-                    fileSentSize = transferred;
-                    totalSentAll += delta;
-                    task.transferredSize = totalSentAll;
+                    const currentSent = completedFilesSize + transferred;
+                    task.transferredSize = currentSent;
 
                     if (task.totalSize > 0) {
-                      const currentProgress = Math.floor(totalSentAll * 100 / task.totalSize);
+                      const currentProgress = Math.floor(currentSent * 100 / task.totalSize);
                       if (currentProgress !== task.progress && currentProgress < 100) {
                         task.progress = currentProgress;
                       }
@@ -566,9 +564,9 @@ export class FileTransferManager {
 
                     const elapsed = (Date.now() - task.startTime) / 1000;
                     if (elapsed > 0) {
-                      task.speed = totalSentAll / elapsed;
+                      task.speed = currentSent / elapsed;
                       if (task.speed > 0) {
-                        task.eta = Math.max(0, (task.totalSize - totalSentAll) / task.speed);
+                        task.eta = Math.max(0, (task.totalSize - currentSent) / task.speed);
                       }
                     }
                     this.notifyListeners();
@@ -620,8 +618,8 @@ export class FileTransferManager {
         }
 
         // 文件完美传输完毕，更新已发总大小
-        totalSentAll += file.size;
-        task.transferredSize = totalSentAll;
+        completedFilesSize += file.size;
+        task.transferredSize = completedFilesSize;
         this.notifyListeners();
       }
 

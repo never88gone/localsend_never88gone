@@ -11,6 +11,7 @@
 #include <sstream>
 #include <vector>
 #include <map>
+#include <set>
 #include <mutex>
 #include <thread>
 #include <chrono>
@@ -89,6 +90,8 @@ struct FileRequest {
     bool accepted;
     bool is_sending; // true: 发送, false: 接收
     std::chrono::steady_clock::time_point creation_time;
+    std::map<std::string, int64_t> file_transferred; // 记录每个文件已传输的字节数
+    std::set<std::string> completed_files;           // 记录已传输完毕的文件 ID
 
     FileRequest() : progress(0), is_cancelled(false), accepted(false), is_sending(false), 
                     creation_time(std::chrono::steady_clock::now()) {}
@@ -116,7 +119,9 @@ struct FileRequest {
         is_cancelled(other.is_cancelled.load()),
         accepted(other.accepted),
         is_sending(other.is_sending),
-        creation_time(other.creation_time) {
+        creation_time(other.creation_time),
+        file_transferred(std::move(other.file_transferred)),
+        completed_files(std::move(other.completed_files)) {
             other.file_fds.clear();
         }
 
@@ -974,9 +979,20 @@ static std::string handle_upload(const std::string& path, const std::string& bod
         total_received += n;
         
         // 更新总体进度
-        if (content_length > 0) {
-            int32_t current_progress = (int32_t)(total_received * 100 / content_length);
-            // 只在进度变化超过 1% 时触发，减少回调压力
+        if (req->total_size > 0) {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            req->file_transferred[file_id_str] = total_received;
+            
+            int64_t total_transferred = 0;
+            for (auto const& pair : req->file_transferred) {
+                total_transferred += pair.second;
+            }
+            
+            int32_t current_progress = (int32_t)(total_transferred * 100 / req->total_size);
+            if (current_progress >= 100) {
+                current_progress = 99; // 限制在 99% 以内，直到全部文件传输完成才设为 100
+            }
+            
             if (current_progress != (int32_t)req->progress) {
                 req->progress = current_progress;
                 trigger_progress(session_id, current_progress);
@@ -987,11 +1003,42 @@ static std::string handle_upload(const std::string& path, const std::string& bod
     fclose(fp);
     
     if (total_received >= content_length) {
-        req->progress = 100;
-        trigger_progress(session_id, 100);
+        bool all_done = false;
+        int32_t final_progress = 99;
+        {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            req->file_transferred[file_id_str] = total_received; // 确保记录的是最终大小
+            req->completed_files.insert(file_id_str);
+            
+            if (req->completed_files.size() == req->file_items.size()) {
+                all_done = true;
+                req->progress = 100;
+            } else {
+                int64_t total_transferred = 0;
+                for (auto const& pair : req->file_transferred) {
+                    total_transferred += pair.second;
+                }
+                if (req->total_size > 0) {
+                    final_progress = (int32_t)(total_transferred * 100 / req->total_size);
+                    if (final_progress >= 100) {
+                        final_progress = 99;
+                    }
+                    req->progress = final_progress;
+                }
+            }
+        }
+        
+        if (all_done) {
+            trigger_progress(session_id, 100);
+        } else {
+            trigger_progress(session_id, final_progress);
+        }
         return http_response(200, "{\"success\":true}");
     } else {
-        req->progress = -1;
+        {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            req->progress = -1;
+        }
         trigger_progress(session_id, -1); // 触发失败进度回调
         return http_response(500, "{\"error\":\"Incomplete upload\"}");
     }
