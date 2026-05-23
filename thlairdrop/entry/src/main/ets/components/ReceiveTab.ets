@@ -160,7 +160,7 @@ export struct ReceiveTab {
     if (success) {
       this.pendingRequests.delete(requestId);
       this.pendingRequests = new Map(this.pendingRequests);
-      promptAction.showToast({ message: t('receive_start', this.languageVersion) });
+      // promptAction.showToast({ message: t('receive_start', this.languageVersion) });
     } else {
       promptAction.showToast({ message: t('accept_failed', this.languageVersion) });
     }

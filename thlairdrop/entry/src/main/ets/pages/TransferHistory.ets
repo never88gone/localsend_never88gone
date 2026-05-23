@@ -23,6 +23,12 @@ struct TransferHistory {
   @Watch('onTabChanged') @State currentTab: number = 0; // 0: 接收, 1: 发送
   @State historyRecords: HistoryRecord[] = [];
   @State activeTasks: TransferTask[] = [];
+  @StorageProp('navigationBarHeight') navigationBarHeight: number = 0;
+  
+  get bottomPadding(): number {
+    const navBarVp = px2vp(this.navigationBarHeight);
+    return navBarVp > 0 ? Math.max(navBarVp, 28) : 28;
+  }
 
   onRefreshTriggered() {
     this.refreshKey++;
@@ -185,6 +191,7 @@ struct TransferHistory {
       }
       .width('100%')
       .height('100%')
+      .padding({ bottom: this.bottomPadding })
       .justifyContent(FlexAlign.Start)
       .alignItems(HorizontalAlign.Start)
     }
@@ -357,11 +364,7 @@ struct TransferHistory {
       
       if (saveResult && saveResult.length > 0) {
         const uri = saveResult[0];
-        let srcFile = fs.openSync(item.filePath, fs.OpenMode.READ_ONLY);
-        let destFile = fs.openSync(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
-        await fs.copyFile(srcFile.fd, destFile.fd);
-        fs.closeSync(srcFile);
-        fs.closeSync(destFile);
+        await fs.copyFile(item.filePath, uri);
         promptAction.showToast({ message: '文件已成功导出' });
       }
     } catch (err) {

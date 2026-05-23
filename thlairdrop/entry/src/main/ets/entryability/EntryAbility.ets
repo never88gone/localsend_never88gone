@@ -75,6 +75,7 @@ export default class EntryAbility extends UIAbility {
 
     // 初始化默认高度为0，避免页面读取时为undefined
     AppStorage.setOrCreate('statusBarHeight', 0);
+    AppStorage.setOrCreate('navigationBarHeight', 0);
 
     // 等待设置加载完成后再加载页面，避免主题闪烁
     (async () => {
@@ -102,7 +103,17 @@ export default class EntryAbility extends UIAbility {
         let totalTopHeight = Math.max(sysHeight, cutoutHeight);
         AppStorage.setOrCreate('statusBarHeight', totalTopHeight);
 
-        hilog.info(DOMAIN, 'testTag', 'Succeeded in setting fullscreen immersive mode. StatusBarHeight: %{public}d', totalTopHeight);
+        // 获取系统底部避让区域高度 (系统栏 + 导航指示器)
+        let avoidAreaBottom = windowClass.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+        let navHeight = avoidAreaBottom.bottomRect.height;
+        
+        let systemBottomArea = windowClass.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+        let sysBottomHeight = systemBottomArea.bottomRect.height;
+        
+        let totalBottomHeight = Math.max(navHeight, sysBottomHeight);
+        AppStorage.setOrCreate('navigationBarHeight', totalBottomHeight);
+
+        hilog.info(DOMAIN, 'testTag', 'Succeeded in setting fullscreen immersive mode. StatusBarHeight: %{public}d, NavigationBarHeight: %{public}d', totalTopHeight, totalBottomHeight);
       } catch (err) {
         hilog.error(DOMAIN, 'testTag', 'Failed to set fullscreen immersive mode: %{public}s', JSON.stringify(err));
       }

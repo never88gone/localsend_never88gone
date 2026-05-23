@@ -57,6 +57,17 @@ export interface TransferTask {
   errorMessage?: string;
 }
 
+export interface MediaFileSaveInfo {
+  srcPath: string;
+  fileName: string;
+  ext: string;
+}
+
+export interface NonMediaFileSaveInfo {
+  srcPath: string;
+  fileName: string;
+}
+
 /**
  * 传输回调
  */
@@ -76,6 +87,11 @@ export class FileTransferManager {
   private callbacks: Map<string, TransferCallback> = new Map();
   private listeners: ((tasks: TransferTask[]) => void)[] = [];
   private pollingIntervalId: number | null = null;
+
+  // 节流控制参数
+  private lastNotifyTime: number = 0;
+  private pendingNotify: boolean = false;
+  private readonly NOTIFY_INTERVAL = 50; // 每 50ms 最多通知 UI 一次
 
   private constructor() {
     this.initCallbacks();
@@ -103,6 +119,27 @@ export class FileTransferManager {
   private notifyListeners(): void {
     const allTasks = this.getAllTasks();
     this.listeners.forEach(l => l(allTasks));
+  }
+
+  /**
+   * 带节流的通知方法，防止底层进度事件过快导致 UI 渲染帧丢失/卡死
+   */
+  private requestNotify(): void {
+    const now = Date.now();
+    if (now - this.lastNotifyTime >= this.NOTIFY_INTERVAL) {
+      this.notifyListeners();
+      this.lastNotifyTime = now;
+      this.pendingNotify = false;
+    } else {
+      if (!this.pendingNotify) {
+        this.pendingNotify = true;
+        setTimeout(() => {
+          this.notifyListeners();
+          this.lastNotifyTime = Date.now();
+          this.pendingNotify = false;
+        }, this.NOTIFY_INTERVAL - (now - this.lastNotifyTime));
+      }
+    }
   }
 
   /**
@@ -752,24 +789,29 @@ export class FileTransferManager {
       task.errorMessage = error;
     }
 
-    if (state === TransferState.Completed || 
+    if (state === TransferState.Completed ||
         state === TransferState.Failed ||
         state === TransferState.Cancelled) {
       task.endTime = Date.now();
-      
-      // 保存到历史记录
-      this.saveToHistory(task);
 
-      // 触感反馈
-      try {
-        if (state === TransferState.Completed) {
-          vibrator.startVibration({ type: 'time', duration: 50 }, { id: 0, usage: 'alarm' });
-        } else if (state === TransferState.Failed) {
-          vibrator.startVibration({ type: 'time', duration: 200 }, { id: 0, usage: 'alarm' });
+      // 将历史记录写入和震动反馈全部推迟到后台执行，避免阻塞 UI 渲染帧
+      const taskSnapshot = task;
+      const stateSnapshot = state;
+      setTimeout(() => {
+        // 保存到历史记录（在 200ms 后异步写入，不阻塞当前帧）
+        this.saveToHistory(taskSnapshot);
+
+        // 触感反馈
+        try {
+          if (stateSnapshot === TransferState.Completed) {
+            vibrator.startVibration({ type: 'time', duration: 50 }, { id: 0, usage: 'alarm' });
+          } else if (stateSnapshot === TransferState.Failed) {
+            vibrator.startVibration({ type: 'time', duration: 200 }, { id: 0, usage: 'alarm' });
+          }
+        } catch (e) {
+          // 忽略不支持震动的设备
         }
-      } catch (e) {
-        // 忽略不支持震动的设备
-      }
+      }, 0);
     }
 
     const callback = this.callbacks.get(task.id);
@@ -780,13 +822,14 @@ export class FileTransferManager {
     if (state === TransferState.Completed) {
       callback?.onComplete?.(task);
       if (task.direction === TransferDirection.Receive) {
-        // 自动保存到相册/公共目录
-        this.exportReceivedFiles(task);
-        try {
-          promptAction.showToast({ message: t('receive_complete') });
-        } catch (e) {
-          console.error('[Transfer] Failed to show complete toast:', e);
-        }
+        // 自动保存到相册/公共目录，使用 setTimeout 延迟 300 毫秒以规避 UI 重绘卡顿和 Dialog 并发冲突
+        setTimeout(() => {
+          try {
+            promptAction.showToast({ message: '接收完成' });
+          } catch (e) {}
+          // 暂时注释导出逻辑，验证是否是由于系统弹窗 UIExtension 导致的长达一两秒的 UI 假死
+          // this.exportReceivedFiles(task);
+        }, 300);
       }
     } else if (state === TransferState.Failed) {
       callback?.onError?.(task, error || '未知错误');
@@ -799,6 +842,7 @@ export class FileTransferManager {
       }
     }
 
+    // 状态变更（比如开始、结束）总是立刻通知，不被节流丢弃
     this.notifyListeners();
   }
 
@@ -806,20 +850,37 @@ export class FileTransferManager {
    * 保存到历史记录
    */
   private async saveToHistory(task: TransferTask): Promise<void> {
-    const record: HistoryRecord = {
-      id: task.id,
-      fileName: task.files.length > 0 ? task.files[0].fileName : 'Unknown',
-      size: task.totalSize,
-      time: task.endTime || Date.now(),
-      direction: task.direction === TransferDirection.Receive ? 'receive' : 'send',
-      deviceName: task.device ? task.device.alias : 'Unknown',
-      status: task.state === TransferState.Completed ? 'completed' : 'failed',
-      filePath: task.direction === TransferDirection.Receive && task.saveDir 
-        ? `${task.saveDir}/${task.files.length > 0 ? task.files[0].fileName : ''}`
-        : (task.files.length > 0 ? task.files[0].filePath : undefined)
-    };
-    
-    await historyService.addRecord(record);
+    const recordsList: HistoryRecord[] = [];
+    if (task.files.length === 0) {
+      const record: HistoryRecord = {
+        id: task.id,
+        fileName: 'Unknown',
+        size: task.totalSize,
+        time: task.endTime || Date.now(),
+        direction: task.direction === TransferDirection.Receive ? 'receive' : 'send',
+        deviceName: task.device ? task.device.alias : 'Unknown',
+        status: task.state === TransferState.Completed ? 'completed' : 'failed'
+      };
+      recordsList.push(record);
+    } else {
+      for (let i = 0; i < task.files.length; i++) {
+        const file = task.files[i];
+        const record: HistoryRecord = {
+          id: `${task.id}-${i}`,
+          fileName: file.fileName,
+          size: file.size,
+          time: task.endTime || Date.now(),
+          direction: task.direction === TransferDirection.Receive ? 'receive' : 'send',
+          deviceName: task.device ? task.device.alias : 'Unknown',
+          status: task.state === TransferState.Completed ? 'completed' : 'failed',
+          filePath: task.direction === TransferDirection.Receive && task.saveDir 
+            ? `${task.saveDir}/${file.fileName}`
+            : file.filePath
+        };
+        recordsList.push(record);
+      }
+    }
+    await historyService.addRecords(recordsList);
   }
 
   /**
@@ -853,7 +914,8 @@ export class FileTransferManager {
     if (progress >= 100 && task.state === TransferState.InProgress) {
       this.updateTaskState(task, TransferState.Completed);
     } else {
-      this.notifyListeners();
+      // 正在传输中，使用节流机制限制 UI 刷新频率，防止密集回调卡死主线程
+      this.requestNotify();
     }
   }
 
@@ -918,6 +980,9 @@ export class FileTransferManager {
       const saveDirSetting = settings.saveDir; // '下载' | '图片' | '文档'
       console.info(`[Transfer] Starting to export received files to: ${saveDirSetting}`);
 
+      const mediaFilesToSave: MediaFileSaveInfo[] = [];
+      const nonMediaFilesToSave: NonMediaFileSaveInfo[] = [];
+
       for (const file of task.files) {
         const srcPath = `${task.saveDir}/${file.fileName}`;
         
@@ -940,80 +1005,131 @@ export class FileTransferManager {
         const isImageOrVideo = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'mp4', 'mov', 'avi', 'mkv', '3gp'].includes(ext);
 
         if (isImageOrVideo) {
-          // 只要是图片或者视频文件，直接尝试自动保存到系统相册中，获得最佳移动端体验
-          await this.saveToGalleryInternal(srcPath, file.fileName, ext);
+          mediaFilesToSave.push({
+            srcPath: srcPath,
+            fileName: file.fileName,
+            ext: ext
+          });
         } else {
-          // 非媒体文件：先判断当前是否为手机，避免直接在手机上调用getUserDownloadDir导致系统抛出不支持的异常
-          if (deviceInfo.deviceType === 'phone') {
-            console.info(`[Transfer] Phone device detected, keeping non-media file '${file.fileName}' safely in sandbox. Use history picker to export manually.`);
-          } else {
-            try {
-              let publicDir = '';
-              if (saveDirSetting === '下载') {
-                publicDir = environment.getUserDownloadDir();
-              } else if (saveDirSetting === '文档') {
-                publicDir = environment.getUserDocumentDir();
-              }
-
-              if (publicDir) {
-                const destPath = `${publicDir}/${file.fileName}`;
-                let srcFile = fs.openSync(srcPath, fs.OpenMode.READ_ONLY);
-                let destFile = fs.openSync(destPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
-                await fs.copyFile(srcFile.fd, destFile.fd);
-                fs.closeSync(srcFile);
-                fs.closeSync(destFile);
-                console.info(`[Transfer] Successfully auto-exported non-media to public dir: ${destPath}`);
-                promptAction.showToast({ message: `已保存至公共 ${saveDirSetting} 目录` });
-              }
-            } catch (e) {
-              console.warn(`[Transfer] Auto-export to public ${saveDirSetting} dir not supported, keeping in sandbox.`);
-            }
-          }
+          nonMediaFilesToSave.push({
+            srcPath: srcPath,
+            fileName: file.fileName
+          });
         }
       }
+
+      // 1. 批量保存媒体文件到相册（避免多次弹窗和卡顿）
+      if (mediaFilesToSave.length > 0) {
+        await this.saveMultipleToGallery(mediaFilesToSave);
+      }
+
+      // 2. 批量保存非媒体文件到公共目录（仅在非手机设备上）
+      if (nonMediaFilesToSave.length > 0 && deviceInfo.deviceType !== 'phone') {
+        await this.saveMultipleToPublicDir(nonMediaFilesToSave, saveDirSetting);
+      }
+
     } catch (globalErr) {
       console.error('[Transfer] Global error in exportReceivedFiles:', globalErr);
     }
   }
 
   /**
-   * 保存到系统相册内部方法
+   * 批量保存媒体文件到系统相册（只弹出一个确认框）
    */
-  private async saveToGalleryInternal(filePath: string, fileName: string, ext: string): Promise<boolean> {
+  private async saveMultipleToGallery(mediaFiles: MediaFileSaveInfo[]): Promise<boolean> {
     const context = SettingsService.getInstance().getContext() as common.UIAbilityContext;
     if (!context) return false;
 
     try {
       const phAccessHelper: photoAccessHelper.PhotoAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
-      const isVideo = ['mp4', 'mov', 'avi', 'mkv', '3gp'].includes(ext);
-      const photoType: photoAccessHelper.PhotoType = isVideo ? photoAccessHelper.PhotoType.VIDEO : photoAccessHelper.PhotoType.IMAGE;
+      
+      const srcFileUris: string[] = [];
+      const photoCreationConfigs: photoAccessHelper.PhotoCreationConfig[] = [];
 
-      const srcFileUris = ['file://' + filePath];
-      const dot = fileName.lastIndexOf('.');
-      const title = fileName.substring(0, dot !== -1 ? dot : fileName.length);
-      const photoCreationConfigs: Array<photoAccessHelper.PhotoCreationConfig> = [{
-        title: title,
-        fileNameExtension: ext,
-        photoType: photoType,
-        subtype: photoAccessHelper.PhotoSubtype.DEFAULT
-      }];
+      for (let i = 0; i < mediaFiles.length; i++) {
+        const item = mediaFiles[i];
+        srcFileUris.push('file://' + item.srcPath);
 
-      const desFileUris: Array<string> = await phAccessHelper.showAssetsCreationDialog(srcFileUris, photoCreationConfigs);
+        const isVideo = ['mp4', 'mov', 'avi', 'mkv', '3gp'].includes(item.ext);
+        const photoType: photoAccessHelper.PhotoType = isVideo ? photoAccessHelper.PhotoType.VIDEO : photoAccessHelper.PhotoType.IMAGE;
+
+        const dot = item.fileName.lastIndexOf('.');
+        let title = item.fileName.substring(0, dot !== -1 ? dot : item.fileName.length);
+
+        // 核心修复：HarmonyOS 图库严禁 title 包含 \ / : * ? " < > | 等特殊字符
+        // 如果包含这些字符，底层的 showAssetsCreationDialog 会报错并卡死模态框，导致 UI 假死数秒且部分文件丢失
+        title = title.replace(/[\\/:*?"<>|]/g, '_');
+
+        photoCreationConfigs.push({
+          title: title,
+          fileNameExtension: item.ext,
+          photoType: photoType,
+          subtype: photoAccessHelper.PhotoSubtype.DEFAULT
+        });
+      }
+
+      console.info(`[Transfer] Requesting gallery creation dialog for ${mediaFiles.length} files...`);
+      const desFileUris: string[] = await phAccessHelper.showAssetsCreationDialog(srcFileUris, photoCreationConfigs);
+      
       if (desFileUris && desFileUris.length > 0) {
-        const targetUri: string = desFileUris[0];
-        let srcFile = fs.openSync(filePath, fs.OpenMode.READ_ONLY);
-        let destFile = fs.openSync(targetUri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
-        await fs.copyFile(srcFile.fd, destFile.fd);
-        fs.closeSync(srcFile);
-        fs.closeSync(destFile);
-        console.info(`[Transfer] Saved image to gallery: ${targetUri}`);
-        promptAction.showToast({ message: '已成功保存至系统相册' });
+        console.info(`[Transfer] Assets creation dialog accepted, got target URIs count: ${desFileUris.length}`);
+        
+        // 将 500ms 延时和拷贝流程全部打包塞入后台 setTimeout，使主线程无需任何 await 阻断、立刻以微秒级时间退栈返回
+        setTimeout(() => {
+          console.info(`[Transfer] Launching background photo copy for ${mediaFiles.length} files...`);
+          mediaFiles.forEach((item, i) => {
+            if (i >= desFileUris.length) return;
+            const srcPath = item.srcPath;
+            const targetUri = desFileUris[i];
+            
+            fs.copyFile(srcPath, targetUri)
+              .then(() => {
+                console.info(`[Transfer] Successfully copied ${item.fileName} to gallery URI: ${targetUri}`);
+              })
+              .catch((copyErr: Error) => {
+                console.error(`[Transfer] Failed to copy ${item.fileName} to gallery:`, copyErr);
+              });
+          });
+        }, 500);
+        
         return true;
+      } else {
+        console.info('[Transfer] Assets creation dialog cancelled by user or returned empty.');
       }
     } catch (err) {
-      console.error('[Transfer] Failed to save to gallery:', err);
+      console.error('[Transfer] Failed to save multiple to gallery:', err);
     }
     return false;
+  }
+
+  /**
+   * 批量保存非媒体文件到公共目录
+   */
+  private async saveMultipleToPublicDir(nonMediaFiles: NonMediaFileSaveInfo[], saveDirSetting: string): Promise<void> {
+    try {
+      let publicDir = '';
+      if (saveDirSetting === '下载') {
+        publicDir = environment.getUserDownloadDir();
+      } else if (saveDirSetting === '文档') {
+        publicDir = environment.getUserDocumentDir();
+      }
+
+      if (!publicDir) return;
+
+      console.info(`[Transfer] Launching background public dir copy for ${nonMediaFiles.length} files...`);
+      nonMediaFiles.forEach((item) => {
+        const destPath = `${publicDir}/${item.fileName}`;
+        fs.copyFile(item.srcPath, destPath)
+          .then(() => {
+            console.info(`[Transfer] Successfully exported ${item.fileName} to public dir: ${destPath}`);
+          })
+          .catch((e: Error) => {
+            console.warn(`[Transfer] Failed to export ${item.fileName} to public dir:`, e);
+          });
+      });
+    } catch (e) {
+      console.warn('[Transfer] Failed to export multiple to public dir:', e);
+    }
   }
 
   /**

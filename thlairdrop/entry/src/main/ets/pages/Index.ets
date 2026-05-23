@@ -52,6 +52,12 @@ struct Index {
   @Watch('onRefreshTriggered') @StorageProp('themeVersion') themeVersion: number = 0;
   @Watch('onRefreshTriggered') @StorageProp('languageVersion') languageVersion: number = 0;
   @StorageProp('statusBarHeight') statusBarHeight: number = 0;
+  @StorageProp('navigationBarHeight') navigationBarHeight: number = 0;
+  
+  get bottomPadding(): number {
+    const navBarVp = px2vp(this.navigationBarHeight);
+    return navBarVp > 0 ? Math.max(navBarVp, 28) : 28;
+  }
   @State refreshKey: number = 0;
   
   onRefreshTriggered() {
@@ -332,7 +338,7 @@ struct Index {
       }
       .width('100%')
       .height('100%')
-      .padding({ top: px2vp(this.statusBarHeight) })
+      .padding({ top: px2vp(this.statusBarHeight), bottom: this.bottomPadding })
       // 监听服务器开关变化
       .onVisibleAreaChange([0.0, 1.0], (isVisible: boolean, currentRatio: number) => {
         if (isVisible && this.privacyAccepted) {

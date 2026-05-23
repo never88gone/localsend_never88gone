@@ -10,6 +10,12 @@ struct HelpPage {
   @Watch('onRefreshTriggered') @StorageProp('themeVersion') themeVersion: number = 0;
   @Watch('onRefreshTriggered') @StorageProp('languageVersion') languageVersion: number = 0;
   @State refreshKey: number = 0;
+  @StorageProp('navigationBarHeight') navigationBarHeight: number = 0;
+  
+  get bottomPadding(): number {
+    const navBarVp = px2vp(this.navigationBarHeight);
+    return navBarVp > 0 ? Math.max(navBarVp, 28) : 28;
+  }
   
   onRefreshTriggered() {
     this.refreshKey++;
@@ -76,6 +82,7 @@ struct HelpPage {
       }
       .width('100%')
       .height('100%')
+      .padding({ bottom: this.bottomPadding })
       .justifyContent(FlexAlign.Start)
       .alignItems(HorizontalAlign.Start)
     }

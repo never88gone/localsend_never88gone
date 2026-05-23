@@ -48,6 +48,7 @@ export class SettingsService {
   private static instance: SettingsService | null = null;
   private prefs: preferences.Preferences | null = null;
   private context: common.UIAbilityContext | null = null;
+  private cachedSettings: AppSettings | null = null;
   
   // 设置变更回调
   private onThemeChange: ThemeChangeCallback | null = null;
@@ -69,6 +70,10 @@ export class SettingsService {
     try {
       this.prefs = await preferences.getPreferences(context, 'localsend_settings');
       hilog.info(0x0000, 'SettingsService', 'Preferences initialized');
+      // 初始化时异步预加载缓存，减少首次使用的延迟
+      this.getSettings().catch((e: Error) => {
+        hilog.error(0x0000, 'SettingsService', `Failed to pre-load settings: ${JSON.stringify(e)}`);
+      });
     } catch (e) {
       hilog.error(0x0000, 'SettingsService', `Failed to init preferences: ${JSON.stringify(e)}`);
     }
@@ -93,6 +98,10 @@ export class SettingsService {
   
   // 获取设置
   async getSettings(): Promise<AppSettings> {
+    if (this.cachedSettings) {
+      return this.cachedSettings;
+    }
+
     if (!this.prefs) {
       return DEFAULT_SETTINGS;
     }
@@ -111,7 +120,7 @@ export class SettingsService {
       const privacyAccepted = await this.prefs.get('privacyAccepted', DEFAULT_SETTINGS.privacyAccepted) as boolean;
       const pinCode = await this.prefs.get('pinCode', DEFAULT_SETTINGS.pinCode) as string;
       
-      const settings: AppSettings = {
+      this.cachedSettings = {
         theme: theme,
         colorTheme: colorTheme,
         language: language,
@@ -125,7 +134,7 @@ export class SettingsService {
         privacyAccepted: privacyAccepted,
         pinCode: pinCode
       };
-      return settings;
+      return this.cachedSettings;
     } catch (e) {
       hilog.error(0x0000, 'SettingsService', `Failed to get settings: ${JSON.stringify(e)}`);
       return DEFAULT_SETTINGS;
@@ -230,6 +239,23 @@ export class SettingsService {
     try {
       await this.prefs.put(key, value);
       await this.prefs.flush();
+      
+      // 更新内存缓存
+      if (this.cachedSettings) {
+        if (key === 'theme') this.cachedSettings.theme = value as string;
+        else if (key === 'colorTheme') this.cachedSettings.colorTheme = value as string;
+        else if (key === 'language') this.cachedSettings.language = value as string;
+        else if (key === 'animationEnabled') this.cachedSettings.animationEnabled = value as boolean;
+        else if (key === 'quickSaveMode') this.cachedSettings.quickSaveMode = value as number;
+        else if (key === 'saveDir') this.cachedSettings.saveDir = value as string;
+        else if (key === 'port') this.cachedSettings.port = value as number;
+        else if (key === 'encryptionEnabled') this.cachedSettings.encryptionEnabled = value as boolean;
+        else if (key === 'aliasName') this.cachedSettings.aliasName = value as string;
+        else if (key === 'privacyAccepted') this.cachedSettings.privacyAccepted = value as boolean;
+        else if (key === 'pinCode') this.cachedSettings.pinCode = value as string;
+        else if (key === 'favorites') this.cachedSettings.favorites = JSON.parse(value as string) as string[];
+      }
+      
       hilog.info(0x0000, 'SettingsService', `Setting saved: ${key} = ${value}`);
       
       // 触发回调

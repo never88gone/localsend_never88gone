@@ -37,14 +37,20 @@ static void CallJsCallback(napi_env env, napi_value js_cb, void* context, void* 
 static void OnNativeFileRequest(const char* request_json) {
     if (g_file_callback_fn) {
         char* data = strdup(request_json);
-        napi_call_threadsafe_function(g_file_callback_fn, data, napi_tsfn_blocking);
+        napi_status status = napi_call_threadsafe_function(g_file_callback_fn, data, napi_tsfn_nonblocking);
+        if (status != napi_ok) {
+            free(data);
+        }
     }
 }
 
 static void OnNativeDeviceDiscovered(const char* device_json) {
     if (g_device_callback_fn) {
         char* data = strdup(device_json);
-        napi_call_threadsafe_function(g_device_callback_fn, data, napi_tsfn_blocking);
+        napi_status status = napi_call_threadsafe_function(g_device_callback_fn, data, napi_tsfn_nonblocking);
+        if (status != napi_ok) {
+            free(data);
+        }
     }
 }
 
@@ -90,7 +96,10 @@ static void OnNativeProgressReal(const char* request_id, int32_t progress) {
         ProgressData* data = new ProgressData();
         strncpy(data->id, request_id, 127);
         data->progress = progress;
-        napi_call_threadsafe_function(g_progress_callback_fn, data, napi_tsfn_blocking);
+        napi_status status = napi_call_threadsafe_function(g_progress_callback_fn, data, napi_tsfn_nonblocking);
+        if (status != napi_ok) {
+            delete data;
+        }
     }
 }
 

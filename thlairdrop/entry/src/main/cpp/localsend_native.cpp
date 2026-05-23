@@ -980,21 +980,28 @@ static std::string handle_upload(const std::string& path, const std::string& bod
         
         // 更新总体进度
         if (req->total_size > 0) {
-            std::lock_guard<std::mutex> lock(g_mutex);
-            req->file_transferred[file_id_str] = total_received;
-            
-            int64_t total_transferred = 0;
-            for (auto const& pair : req->file_transferred) {
-                total_transferred += pair.second;
+            int32_t current_progress = 0;
+            bool need_trigger = false;
+            {
+                std::lock_guard<std::mutex> lock(g_mutex);
+                req->file_transferred[file_id_str] = total_received;
+                
+                int64_t total_transferred = 0;
+                for (auto const& pair : req->file_transferred) {
+                    total_transferred += pair.second;
+                }
+                
+                current_progress = (int32_t)(total_transferred * 100 / req->total_size);
+                if (current_progress >= 100) {
+                    current_progress = 99; // 限制在 99% 以内，直到全部文件传输完成才设为 100
+                }
+                
+                if (current_progress != (int32_t)req->progress) {
+                    req->progress = current_progress;
+                    need_trigger = true;
+                }
             }
-            
-            int32_t current_progress = (int32_t)(total_transferred * 100 / req->total_size);
-            if (current_progress >= 100) {
-                current_progress = 99; // 限制在 99% 以内，直到全部文件传输完成才设为 100
-            }
-            
-            if (current_progress != (int32_t)req->progress) {
-                req->progress = current_progress;
+            if (need_trigger) {
                 trigger_progress(session_id, current_progress);
             }
         }
@@ -1160,13 +1167,19 @@ static std::string handle_request(const std::string& method, const std::string& 
     // 取消传输
     if ((path == "/api/cancel" || path == "/api/localsend/v2/cancel" || path == "/api/localsend/v1/cancel") && method == "POST") {
         std::string session_id = extract_query_param(query_params, "sessionId");
+        bool need_trigger = false;
         if (!session_id.empty()) {
-            std::lock_guard<std::mutex> lock(g_mutex);
-            auto it = g_pending_requests.find(session_id);
-            if (it != g_pending_requests.end()) {
-                it->second.is_cancelled = true;
-                LOGI("Session %s cancelled by remote peer", session_id.c_str());
-                it->second.progress = -1;
+            {
+                std::lock_guard<std::mutex> lock(g_mutex);
+                auto it = g_pending_requests.find(session_id);
+                if (it != g_pending_requests.end()) {
+                    it->second.is_cancelled = true;
+                    LOGI("Session %s cancelled by remote peer", session_id.c_str());
+                    it->second.progress = -1;
+                    need_trigger = true;
+                }
+            }
+            if (need_trigger) {
                 trigger_progress(session_id, -1);
                 return http_response(200, "{\"success\":true}");
             }
@@ -1175,6 +1188,31 @@ static std::string handle_request(const std::string& method, const std::string& 
     }
     
     return http_response(404, "{\"error\":\"Not found\"}");
+}
+
+// 辅助函数：不区分大小写地查找子串
+static size_t case_insensitive_find(const std::string& str, const std::string& to_find) {
+    if (to_find.empty() || str.size() < to_find.size()) {
+        return std::string::npos;
+    }
+    auto to_lower = [](char c) -> char {
+        return (c >= 'A' && c <= 'Z') ? (c - 'A' + 'a') : c;
+    };
+    for (size_t i = 0; i <= str.size() - to_find.size(); ++i) {
+        bool match = true;
+        for (size_t j = 0; j < to_find.size(); ++j) {
+            char c1 = to_lower(str[i + j]);
+            char c2 = to_lower(to_find[j]);
+            if (c1 != c2) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            return i;
+        }
+    }
+    return std::string::npos;
 }
 
 static void handle_client_connection(int client, struct sockaddr_in client_addr) {
@@ -1186,42 +1224,91 @@ static void handle_client_connection(int client, struct sockaddr_in client_addr)
     // 设置超时防止挂起
     set_socket_timeouts(client, 15);
     
-    // 读取请求
-    char buffer[BUFFER_SIZE];
-    ssize_t len = recv(client, buffer, BUFFER_SIZE - 1, 0);
-    if (len <= 0) {
-        close(client);
-        return;
-    }
-    buffer[len] = '\0';
-    
-    // 解析请求
-    std::string request_str(buffer, len);
-    size_t method_end = request_str.find(' ');
-    size_t path_end = request_str.find(' ', method_end + 1);
-    size_t body_start = request_str.find("\r\n\r\n");
-    
-    // 解析 Content-Length
-    size_t content_length = 0;
-    size_t cl_pos = request_str.find("Content-Length:");
-    if (cl_pos == std::string::npos) {
-        cl_pos = request_str.find("content-length:");
-    }
-    if (cl_pos != std::string::npos) {
-        size_t cl_end = request_str.find("\r\n", cl_pos);
-        if (cl_end != std::string::npos) {
-            std::string cl_str = request_str.substr(cl_pos + 15, cl_end - cl_pos - 15);
-            // 去除空格
-            cl_str.erase(0, cl_str.find_first_not_of(" \t"));
-            try {
-                content_length = std::stoul(cl_str);
-            } catch (...) {
-                content_length = 0;
+    std::string leftover_data = "";
+    while (true) {
+        std::string request_str;
+        if (!leftover_data.empty()) {
+            request_str = leftover_data;
+            leftover_data.clear();
+        }
+        
+        // 1. 循环读取，直到 request_str 中包含非空白字符（吃掉前导空白，如上一次 Body 后的 \r\n）
+        bool read_failed = false;
+        while (true) {
+            size_t first_non_space = request_str.find_first_not_of(" \t\r\n");
+            if (first_non_space != std::string::npos) {
+                if (first_non_space > 0) {
+                    request_str = request_str.substr(first_non_space);
+                }
+                break;
+            }
+            // 否则全是空白，清空并继续接收
+            request_str.clear();
+            char buffer[BUFFER_SIZE];
+            ssize_t len = recv(client, buffer, BUFFER_SIZE - 1, 0);
+            if (len <= 0) {
+                read_failed = true;
+                break;
+            }
+            request_str = std::string(buffer, len);
+        }
+        
+        if (read_failed || request_str.empty()) {
+            break;
+        }
+        
+        // 2. 确保 HTTP 头部已全部接收（必须含有 "\r\n\r\n"）
+        while (request_str.find("\r\n\r\n") == std::string::npos) {
+            char buffer[BUFFER_SIZE];
+            ssize_t len = recv(client, buffer, BUFFER_SIZE - 1, 0);
+            if (len <= 0) {
+                read_failed = true;
+                break;
+            }
+            request_str += std::string(buffer, len);
+        }
+        
+        if (read_failed || request_str.find("\r\n\r\n") == std::string::npos) {
+            break;
+        }
+        
+        size_t method_end = request_str.find(' ');
+        if (method_end == std::string::npos) break;
+        size_t path_end = request_str.find(' ', method_end + 1);
+        if (path_end == std::string::npos) break;
+        size_t body_start = request_str.find("\r\n\r\n");
+        
+        // 3. 不区分大小写解析 Content-Length
+        size_t content_length = 0;
+        std::string header_part = request_str.substr(0, body_start);
+        size_t cl_pos = case_insensitive_find(header_part, "content-length:");
+        if (cl_pos != std::string::npos) {
+            size_t cl_end = header_part.find("\r\n", cl_pos);
+            if (cl_end != std::string::npos) {
+                std::string cl_str = header_part.substr(cl_pos + 15, cl_end - cl_pos - 15);
+                cl_str.erase(0, cl_str.find_first_not_of(" \t"));
+                try {
+                    content_length = std::stoul(cl_str);
+                } catch (...) {
+                    content_length = 0;
+                }
             }
         }
-    }
-    
-    if (method_end != std::string::npos && path_end != std::string::npos) {
+        
+        // 4. 解析 Connection: close
+        bool connection_close = false;
+        size_t conn_pos = case_insensitive_find(header_part, "connection:");
+        if (conn_pos != std::string::npos) {
+            size_t conn_end = header_part.find("\r\n", conn_pos);
+            if (conn_end != std::string::npos) {
+                std::string conn_str = header_part.substr(conn_pos + 11, conn_end - conn_pos - 11);
+                conn_str.erase(0, conn_str.find_first_not_of(" \t"));
+                if (case_insensitive_find(conn_str, "close") != std::string::npos) {
+                    connection_close = true;
+                }
+            }
+        }
+        
         std::string method = request_str.substr(0, method_end);
         std::string path = request_str.substr(method_end + 1, path_end - method_end - 1);
         std::string query_params = "";
@@ -1230,25 +1317,40 @@ static void handle_client_connection(int client, struct sockaddr_in client_addr)
             query_params = path.substr(q_pos + 1);
             path = path.substr(0, q_pos);
         }
-        std::string body = (body_start != std::string::npos) ? request_str.substr(body_start + 4) : "";
         
-        // 循环读取未完结的 HTTP Body 分包，确保解析完整
+        std::string body = request_str.substr(body_start + 4);
+        
         bool is_upload = (method == "POST" && (path.find("/api/upload/") == 0 || 
                                                path == "/api/localsend/v2/upload" || 
                                                path == "/api/localsend/v1/send"));
-        if (!is_upload && content_length > 0 && body.size() < content_length) {
-            size_t remaining = content_length - body.size();
-            std::vector<char> temp_buf(BUFFER_SIZE);
-            while (remaining > 0) {
-                ssize_t read_len = recv(client, temp_buf.data(), std::min(remaining, (size_t)BUFFER_SIZE), 0);
-                if (read_len <= 0) break;
-                body.append(temp_buf.data(), read_len);
-                remaining -= read_len;
+        
+        if (is_upload) {
+            // 针对上传请求：如果 body 长度超过了 content_length，说明后续粘了下一个请求的 Header 及内容
+            if (body.size() > content_length) {
+                leftover_data = body.substr(content_length);
+                body = body.substr(0, content_length);
+            }
+        } else {
+            // 循环读取未完结的 HTTP Body 分包，确保非上传解析完整
+            if (content_length > 0 && body.size() < content_length) {
+                size_t remaining = content_length - body.size();
+                std::vector<char> temp_buf(BUFFER_SIZE);
+                while (remaining > 0) {
+                    ssize_t read_len = recv(client, temp_buf.data(), std::min(remaining, (size_t)BUFFER_SIZE), 0);
+                    if (read_len <= 0) break;
+                    body.append(temp_buf.data(), read_len);
+                    remaining -= read_len;
+                }
             }
         }
         
         std::string response = handle_request(method, path, body, sender_ip, content_length, client, query_params);
         send(client, response.c_str(), response.size(), 0);
+        
+        // 如果客户端明确要求关闭连接，或者发生了读取错误，则退出
+        if (connection_close) {
+            break;
+        }
     }
     
     close(client);
